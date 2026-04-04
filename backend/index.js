@@ -7,6 +7,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+
+
 // ROUTE: Get Trains between two stations
 app.get('/api/search', async (req, res) => {
     const { from, to } = req.query; // This will take JBN and BPL from the URL
@@ -29,7 +31,6 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
-app.get('/', (req, res) => res.send('Train-Finder API is Live! 🚄'));
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Running on port ${PORT}`));
+// Remove app.listen and the PORT variable. 
+// Add this single line at the very bottom of index.js:
+module.exports = app;
