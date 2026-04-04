@@ -45,3 +45,24 @@ app.get('/api/search', async (req, res) => {
 
 app.get('/', (req, res) => res.send('Train-Finder API is Live! 🚄'));
 module.exports = app;
+
+// ... top part stays the same ...
+
+app.get('/api/search', async (req, res) => {
+    // 1. Add 'date' to the query extraction
+    const { source, dest, date } = req.query; 
+
+    // 2. Make sure they provided all three
+    if (!source || !dest || !date) {
+        return res.status(400).json({ error: 'Please provide source, dest, and date.' });
+    }
+
+    const options = {
+        method: 'GET',
+        url: 'https://irctc1.p.rapidapi.com/api/v3/trainBetweenStations', 
+        params: { 
+            fromStationCode: source, 
+            toStationCode: dest,
+            dateOfJourney: date // 3. Use the dynamic date here!
+        },
+        // ... headers stay the same ...
