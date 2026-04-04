@@ -7,26 +7,29 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ROUTE: Get details for a specific train number
-app.get('/api/train', async (req, res) => {
-    const trainNo = req.query.trainNo; // Takes the train number from the URL
+// ROUTE: Get Trains between two stations
+app.get('/api/search', async (req, res) => {
+    // Taking source and dest from your React frontend
+    const { source, dest } = req.query; 
 
-    // Safety check: Make sure the user actually provided a train number
-    if (!trainNo) {
-        return res.status(400).json({ error: 'Please provide a train number using ?trainNo=...' });
+    if (!source || !dest) {
+        return res.status(400).json({ error: 'Please provide source and dest.' });
     }
 
     const options = {
         method: 'GET',
-        // Notice how the trainNo is injected directly into the URL path
-        url: `https://indian-railway-irctc.p.rapidapi.com/api/trains-search/v1/train/${trainNo}`,
+        // Exact URL from the RapidAPI cURL snippet
+        url: 'https://irctc1.p.rapidapi.com/api/v3/trainBetweenStations', 
         params: { 
-            isH5: 'true', 
-            client: 'web' 
+            // Exact parameter names from the left column
+            fromStationCode: source, 
+            toStationCode: dest,
+            dateOfJourney: '2026-04-10' // Hardcoded for testing
         },
         headers: {
             'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-            'x-rapidapi-host': 'indian-railway-irctc.p.rapidapi.com',
+            // Exact host from the RapidAPI cURL snippet
+            'x-rapidapi-host': 'irctc1.p.rapidapi.com',
             'Content-Type': 'application/json'
         }
     };
@@ -36,13 +39,9 @@ app.get('/api/train', async (req, res) => {
         res.json(response.data);
     } catch (error) {
         console.error("API Error Details:", error.response ? error.response.data : error.message);
-        res.status(500).json({ 
-            error: 'Data fetch failed', 
-            details: error.message 
-        });
+        res.status(500).json({ error: 'Data fetch failed', details: error.message });
     }
 });
 
 app.get('/', (req, res) => res.send('Train-Finder API is Live! 🚄'));
-
 module.exports = app;
