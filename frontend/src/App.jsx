@@ -12,12 +12,12 @@ function App() {
   const searchTrains = async () => {
     setLoading(true);
     try {
-      // The HTML date picker gives YYYY-MM-DD. The API needs DD-MM-YYYY. Let's flip it!
-      const formattedDate = date.split('-').reverse().join('-');
-      
-      // Pass the new date to the backend
-      const response = await fetch(`https://train-finder-mu.vercel.app/api/search?source=${source}&dest=${dest}&date=${formattedDate}`);
+      // REMOVED the .split('-').reverse() line. 
+      // We will just send the standard YYYY-MM-DD date directly!
+      const response = await fetch(`https://train-finder-mu.vercel.app/api/search?source=${source}&dest=${dest}&date=${date}`);
       const data = await response.json();
+      
+      console.log("API Response:", data); // This prints the secret data to your browser
       setTrainData(data);
     } catch (error) {
       console.error("Failed to fetch", error);
