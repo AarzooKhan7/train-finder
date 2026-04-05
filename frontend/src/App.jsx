@@ -40,47 +40,56 @@ function App() {
       const tomorrowStr = nextDayObj.toISOString().split('T')[0];
       const apiTomorrow = formatApiDate(tomorrowStr);
 
-      // --- SECTION 1: DIRECT ---
-      setStatusText("Checking direct routes...");
+      // 1. Direct Routes
+      setStatusText("Searching direct routes...");
       const dRes = await fetch(`${BACKEND_URL}?source=${src}&dest=${dst}&date=${apiToday}`);
       const dData = await dRes.json();
       if (dData.status && dData.data) setDirectRoutes(dData.data);
 
-      // --- SECTION 2: ALTERNATIVES ---
+      // 2. Alternative Routes
       let connections = [];
       for (let hub of TRANSIT_HUBS) {
         if (hub === src || hub === dst) continue;
         setStatusText(`Checking Leg 1 via ${hub}...`);
 
-        // Use 'date' parameter exactly as index.js expects
         const l1Res = await fetch(`${BACKEND_URL}?source=${src}&dest=${hub}&date=${apiToday}`);
         const l1Data = await l1Res.json();
 
-        // QUOTA SAVER: If no trains to hub, don't check hub to dest
-        if (l1Data.status && l1Data.data && l1Data.data.length > 0) {
-          setStatusText(`Found Leg 1! Now checking ${hub} to ${dst}...`);
+        if (l1Data.status && l1Data.data?.length > 0) {
+          setStatusText(`Found Leg 1! Checking connections via ${hub}...`);
           const l2Res = await fetch(`${BACKEND_URL}?source=${hub}&dest=${dst}&date=${apiTomorrow}`);
           const l2Data = await l2Res.json();
 
           if (l2Data.status && l2Data.data) {
             l1Data.data.forEach(t1 => {
               l2Data.data.forEach(t2 => {
-                const arrival = getTimestamp(date, t1.to_sta);
-                const departure = getTimestamp(tomorrowStr, t2.from_std);
-                const diff = (departure - arrival) / (1000 * 60 * 60);
+                // FIXED LOGIC: Treat arrival at hub as "Next Day" relative to departure
+                // This ensures JBN -> CNB (Overnight) works correctly.
+                const arrivalAtHub = new Date(`${tomorrowStr}T${t1.to_sta}:00`).getTime();
+                const departureFromHub = new Date(`${tomorrowStr}T${t2.from_std}:00`).getTime();
+                
+                const diffMs = departureFromHub - arrivalAtHub;
+                const diffHours = diffMs / (1000 * 60 * 60);
 
-                if (diff >= 2 && diff <= 24) {
-                  connections.push({ hub, leg1: t1, leg2: t2, layover: Math.round(diff) });
+                // If layover is between 1 and 20 hours, it's a valid connection
+                if (diffHours >= 1 && diffHours <= 20) {
+                  connections.push({
+                    hub,
+                    leg1: t1,
+                    leg2: t2,
+                    layover: Math.round(diffHours)
+                  });
                 }
               });
             });
           }
         }
       }
+
       setAltRoutes(connections.sort((a, b) => a.layover - b.layover));
 
     } catch (err) {
-      setError("Quota exceeded or connection error.");
+      setError("Quota limit exceeded or backend error.");
     }
     setLoading(false);
   };
