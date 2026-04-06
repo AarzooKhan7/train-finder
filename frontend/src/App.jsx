@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import html2canvas from 'html2canvas';
 
-// Hardcoded Station Dictionary
 const STATIONS = [
   { code: 'NDLS', name: 'New Delhi' }, { code: 'ANVT', name: 'Anand Vihar Terminal' },
   { code: 'CNB', name: 'Kanpur Central' }, { code: 'JBN', name: 'Jogbani' },
@@ -38,7 +37,6 @@ export default function App() {
   const [srcFocus, setSrcFocus] = useState(false);
   const [dstFocus, setDstFocus] = useState(false);
 
-  // --- NEW FEATURE STATES: SCHEDULE MODAL ---
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [scheduleTrainInfo, setScheduleTrainInfo] = useState(null);
   const [scheduleData, setScheduleData] = useState([]);
@@ -97,7 +95,7 @@ export default function App() {
     link.click();
   };
 
-  // --- NEW FEATURE FUNCTION: FETCH SCHEDULE ---
+  // THE BUG FIX: Smart API Parsing Logic
   const fetchSchedule = async (train, e) => {
     e.stopPropagation();
     setScheduleTrainInfo(train);
@@ -110,11 +108,28 @@ export default function App() {
       const res = await fetch(`${SCHEDULE_URL}?trainNo=${train.train_number}`);
       const json = await res.json();
       
+      let stnArray = [];
+      
       if (json.status && json.data) {
-        // Handle array data if the API returns the route array directly inside data
-        setScheduleData(Array.isArray(json.data) ? json.data : []);
+        // Deep search for the route array regardless of API key names
+        if (Array.isArray(json.data)) stnArray = json.data;
+        else if (json.data.route && Array.isArray(json.data.route)) stnArray = json.data.route;
+        else if (json.data.stationList && Array.isArray(json.data.stationList)) stnArray = json.data.stationList;
+        else if (json.data[0] && Array.isArray(json.data[0].route)) stnArray = json.data[0].route;
+      }
+
+      if (stnArray.length > 0) {
+        // Normalize object keys dynamically
+        const mappedSchedule = stnArray.map(stn => ({
+          station_name: stn.station_name || stn.stationName || stn.stationCode || 'Unknown',
+          arrival_time: stn.arrival_time || stn.arrivalTime || 'Source',
+          departure_time: stn.departure_time || stn.departureTime || 'Dest',
+          distance: stn.distance || stn.distanceFromSource || 0
+        }));
+        setScheduleData(mappedSchedule);
       } else {
-        setScheduleError('Schedule data is currently unavailable.');
+        console.log("RAW API RESPONSE (Press F12 to view):", json);
+        setScheduleError('Data format unrecognizable. Check browser console.');
       }
     } catch {
       setScheduleError('Failed to fetch schedule. Check your network.');
@@ -237,7 +252,6 @@ export default function App() {
         
         .rail-app-wrapper { background: #f7f7f9; font-family: 'Inter', sans-serif; color: #111827; min-height: 100vh; padding-bottom: 80px; -webkit-font-smoothing: antialiased; transition: background 0.3s ease;}
         
-        /* Dark Mode Overrides */
         .dark-mode { background: #0f172a; color: #f8fafc; }
         .dark-mode .topbar, .dark-mode .search-card, .dark-mode .train-card { background: #1e293b; border-color: #334155; }
         .dark-mode .premium-input, .dark-mode .custom-select, .dark-mode .filter-pill, .dark-mode .autocomplete-dropdown { background: #0f172a !important; border-color: #334155 !important; color: #f8fafc !important; }
@@ -279,15 +293,13 @@ export default function App() {
         
         .premium-input { height: 50px; border: 1px solid #d1d5db !important; border-radius: 12px; padding: 0 16px; font-size: 16px; font-weight: 600; font-family: inherit; outline: none; width: 100%; transition: 0.2s; background-color: #ffffff !important; color: #111827 !important;}
         .premium-input:focus { border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
-        input.premium-input:-webkit-autofill, input.premium-input:-webkit-autofill:hover, input.premium-input:-webkit-autofill:focus, input.premium-input:-webkit-autofill:active { -webkit-box-shadow: 0 0 0 30px white inset !important; -webkit-text-fill-color: #111827 !important; }
+        input.premium-input:-webkit-autofill { -webkit-box-shadow: 0 0 0 30px white inset !important; -webkit-text-fill-color: #111827 !important; }
         
         .autocomplete-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; margin-top: 4px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); z-index: 100; overflow: hidden; }
         .autocomplete-item { padding: 12px 16px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; justify-content: space-between; border-bottom: 1px solid #f3f4f6;}
-        .autocomplete-item:last-child { border-bottom: none; }
         .autocomplete-item:hover { background: #f9fafb; }
         
         .swap-btn { height: 50px; width: 44px; margin-top: 22px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; cursor: pointer; font-size: 16px; color: #4b5563; display: flex; align-items: center; justify-content: center; transition: 0.2s;}
-        
         .date-stepper-wrap { display: flex; align-items: center; gap: 8px; margin-bottom: 24px;}
         .step-btn { height: 50px; padding: 0 16px; background: #f9fafb; border: 1px solid #d1d5db; border-radius: 12px; cursor: pointer; font-weight: 600; color: #4b5563; transition: 0.2s; margin-top: 22px;}
         
@@ -297,7 +309,9 @@ export default function App() {
         .history-pill { background: #e5e7eb; color: #4b5563; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.2s;}
         
         .results-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;}
-        .custom-select { appearance: none; padding: 10px 40px 10px 16px; border-radius: 10px; border: 1px solid #d1d5db; font-size: 14px; font-weight: 600; outline: none; cursor: pointer; transition: 0.2s; background-color: transparent;}
+        
+        /* CSS FIX: FORCING BROWSER DROPDOWN STYLES AWAY */
+        .custom-select { appearance: none; -webkit-appearance: none; -moz-appearance: none; padding: 10px 40px 10px 16px; border-radius: 10px; border: 1px solid #d1d5db; font-size: 14px; font-weight: 600; outline: none; cursor: pointer; transition: 0.2s; background-color: transparent; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center;}
         
         .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
         .filter-pill { padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid #d1d5db; background: #ffffff; color: #4b5563; transition: 0.2s; }
@@ -315,8 +329,7 @@ export default function App() {
         
         .badge-row { display: flex; gap: 8px; margin-bottom: 8px; }
         .smart-badge { padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(5, 150, 105, 0); } 100% { box-shadow: 0 0 0 0 rgba(5, 150, 105, 0); } }
-        .badge-fastest { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; animation: pulse 2s infinite;}
+        .badge-fastest { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
         .dark-mode .badge-fastest { animation: none; }
         .badge-earliest { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
         .badge-type { background: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb;}
@@ -355,7 +368,6 @@ export default function App() {
 
         .hub-btn { width: 100%; height: 52px; background: #ea580c; color: #ffffff; border: none; border-radius: 12px; font-weight: 700; font-size: 15px; cursor: pointer; margin-top: 16px; transition: 0.2s;}
 
-        /* MODAL CSS */
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(4px); }
         .modal-content { background: #ffffff; width: 100%; max-width: 500px; border-radius: 20px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); animation: modalFadeIn 0.3s ease;}
         @keyframes modalFadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
@@ -511,7 +523,6 @@ export default function App() {
                       💾 Save Ticket
                     </button>
                   )}
-                  {/* NEW: SCHEDULE BUTTON */}
                   <button className="action-btn" onClick={(e) => fetchSchedule(t, e)}>
                     📅 Schedule
                   </button>
@@ -583,7 +594,6 @@ export default function App() {
           );
         })}
 
-        {/* SCHEDULE MODAL */}
         {scheduleModalOpen && (
           <div className="modal-overlay" onClick={() => setScheduleModalOpen(false)}>
             <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -606,8 +616,8 @@ export default function App() {
                         <div className="timeline-dot"></div>
                         <div className="stn-name">{stn.station_name}</div>
                         <div className="stn-meta">
-                          <span>Arr: <b>{stn.arrival_time || 'Source'}</b></span>
-                          <span>Dep: <b>{stn.departure_time || 'Dest'}</b></span>
+                          <span>Arr: <b>{stn.arrival_time}</b></span>
+                          <span>Dep: <b>{stn.departure_time}</b></span>
                           <span>Dist: {stn.distance} km</span>
                         </div>
                       </div>
