@@ -20,10 +20,8 @@ export default function App() {
   const [sortBy, setSortBy] = useState('departure'); 
   const [history, setHistory] = useState([]);
 
-  // Filters
-  const [filterTime, setFilterTime] = useState('ALL'); 
-  const [filterPremium, setFilterPremium] = useState(false);
-  const [filterAC, setFilterAC] = useState(false); 
+  // --- FIXED UI: Single Active Filter State ---
+  const [activeFilter, setActiveFilter] = useState('ALL'); // 'ALL', 'MORNING', 'NIGHT', 'PREMIUM', 'AC'
 
   useEffect(() => { loadHistory(); }, []);
 
@@ -40,12 +38,18 @@ export default function App() {
   const getCache = (key) => { const saved = localStorage.getItem(key); return saved ? JSON.parse(saved) : null; };
   const setCache = (key, data) => { localStorage.setItem(key, JSON.stringify(data)); loadHistory(); };
 
-  // Helper to format "05:58" to "5h 58m"
   const formatDuration = (dur) => {
     if (!dur) return 'N/A';
     const parts = dur.split(':');
     if (parts.length !== 2) return dur;
     return `${parseInt(parts[0])}h ${parseInt(parts[1])}m`;
+  };
+
+  // --- NEW FEATURE: Date Stepper ---
+  const changeDate = (days) => {
+    const d = new Date(date);
+    d.setDate(d.getDate() + days);
+    setDate(d.toISOString().split('T')[0]);
   };
 
   const handleSearch = async (overrideSrc, overrideDst, overrideDate) => {
@@ -55,8 +59,7 @@ export default function App() {
 
     setSource(s); setDest(d); setDate(dt);
     setLoading(true); setError(''); setTrains([]); setAltRoutes([]); setSearched(false);
-    
-    setFilterTime('ALL'); setFilterPremium(false); setFilterAC(false); setSortBy('departure');
+    setActiveFilter('ALL'); setSortBy('departure');
 
     const cacheKey = `DIRECT-${s}-${d}-${dt}`;
 
@@ -75,7 +78,7 @@ export default function App() {
         setCache(cacheKey, json.data);
       }
     } catch {
-      setError('Could not reach the server. Please check your connection.');
+      setError('Connection failed. Please check your network.');
     }
     setLoading(false); setSearched(true);
   };
@@ -132,21 +135,17 @@ export default function App() {
     setHubLoading(false);
   };
 
-  // --- SMART FILTER & SORT ENGINE ---
+  // --- STRICT SINGLE-FILTER ENGINE ---
   let processedTrains = [...trains];
 
-  if (filterTime === 'MORNING') {
+  if (activeFilter === 'MORNING') {
     processedTrains = processedTrains.filter(t => parseInt(t.from_std.split(':')[0]) >= 5 && parseInt(t.from_std.split(':')[0]) <= 11);
-  } else if (filterTime === 'NIGHT') {
+  } else if (activeFilter === 'NIGHT') {
     processedTrains = processedTrains.filter(t => parseInt(t.from_std.split(':')[0]) >= 18 || parseInt(t.from_std.split(':')[0]) <= 4);
-  }
-
-  if (filterPremium) {
+  } else if (activeFilter === 'PREMIUM') {
     const premiumCodes = ['VBEX', 'SHT', 'RAJ', 'TEJ'];
     processedTrains = processedTrains.filter(t => premiumCodes.includes(t.train_type) || t.train_name.toUpperCase().includes('VANDE') || t.train_name.toUpperCase().includes('SHATABDI'));
-  }
-
-  if (filterAC) {
+  } else if (activeFilter === 'AC') {
     const acClasses = ['1A', '2A', '3A', '3E', 'CC', 'EC', 'EV'];
     processedTrains = processedTrains.filter(t => t.class_type && t.class_type.some(c => acClasses.includes(c)));
   }
@@ -176,87 +175,96 @@ export default function App() {
   };
 
   return (
-    <>
+    <div className="rail-app-wrapper">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
         
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #f7f7f9; font-family: 'Inter', sans-serif; color: #1f2937; padding-bottom: 80px; -webkit-font-smoothing: antialiased; }
+        /* CSS RESET & OVERRIDES TO FIX YOUR WHITE TEXT ISSUE */
+        .rail-app-wrapper {
+          background: #f7f7f9;
+          font-family: 'Inter', sans-serif;
+          color: #111827 !important;
+          min-height: 100vh;
+          padding-bottom: 80px;
+          -webkit-font-smoothing: antialiased;
+        }
         
-        .topbar { background: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 0 32px; height: 60px; display: flex; align-items: center; justify-content: space-between; }
-        .topbar-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; letter-spacing: -0.5px; color: #111;}
-        .brand-icon { font-size: 20px; }
+        .rail-app-wrapper h1, .rail-app-wrapper h2, .rail-app-wrapper h3, .rail-app-wrapper p, .rail-app-wrapper span {
+          color: #111827;
+        }
+
+        .topbar { background: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 0 32px; height: 64px; display: flex; align-items: center; justify-content: space-between; }
+        .topbar-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; letter-spacing: -0.5px; color: #111827 !important;}
         
         .page { max-width: 800px; margin: 0 auto; padding: 40px 24px 0; }
-        .page-title { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 6px; color: #111;}
-        .page-subtitle { font-size: 15px; color: #6b7280; margin-bottom: 32px; font-weight: 400;}
+        .page-title { font-size: 32px; font-weight: 800; letter-spacing: -1px; margin-bottom: 6px; color: #111827 !important;}
+        .page-subtitle { font-size: 15px; color: #6b7280 !important; margin-bottom: 32px; font-weight: 500;}
         
-        /* Premium Search Card */
-        .search-card { background: #ffffff; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.03); border: 1px solid #f3f4f6;}
+        /* Clean Input Card */
+        .search-card { background: #ffffff; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.03); border: 1px solid #f3f4f6;}
         .fields-grid { display: grid; grid-template-columns: 1fr 44px 1fr; gap: 16px; margin-bottom: 20px; align-items: center; }
-        .date-row { margin-bottom: 24px; }
         
         .input-group { display: flex; flex-direction: column; gap: 8px; }
-        .input-group label { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
+        .input-group label { font-size: 11px; font-weight: 700; color: #6b7280 !important; text-transform: uppercase; letter-spacing: 0.5px; }
         
-        /* Fixed Placeholders & Inputs */
-        .premium-input { height: 48px; border: 1px solid #d1d5db; border-radius: 10px; padding: 0 16px; font-size: 15px; font-weight: 500; font-family: inherit; outline: none; transition: all 0.2s; background: #ffffff; color: #111; width: 100%;}
-        .premium-input::placeholder { color: #9ca3af; font-weight: 400; }
-        .premium-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+        .premium-input { height: 50px; border: 1px solid #d1d5db; border-radius: 12px; padding: 0 16px; font-size: 16px; font-weight: 600; font-family: inherit; outline: none; background: #ffffff; color: #111827 !important; width: 100%; transition: 0.2s;}
+        .premium-input::placeholder { color: #9ca3af !important; font-weight: 500; opacity: 1; }
+        .premium-input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
         
-        .swap-btn { height: 48px; width: 44px; margin-top: 22px; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 10px; cursor: pointer; font-size: 16px; color: #4b5563; transition: 0.2s; display: flex; align-items: center; justify-content: center;}
-        .swap-btn:hover { background: #e5e7eb; color: #111;}
+        .swap-btn { height: 50px; width: 44px; margin-top: 22px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; cursor: pointer; font-size: 16px; color: #4b5563 !important; display: flex; align-items: center; justify-content: center; transition: 0.2s;}
+        .swap-btn:hover { background: #f3f4f6; color: #111827 !important;}
         
-        .search-btn { width: 100%; height: 52px; background: #111827; color: #ffffff; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; transition: 0.2s; letter-spacing: 0.3px;}
-        .search-btn:hover { background: #374151; }
+        /* Date Stepper UI */
+        .date-stepper-wrap { display: flex; align-items: center; gap: 8px; margin-bottom: 24px;}
+        .step-btn { height: 50px; padding: 0 16px; background: #f9fafb; border: 1px solid #d1d5db; border-radius: 12px; cursor: pointer; font-weight: 600; color: #4b5563 !important; transition: 0.2s; margin-top: 22px;}
+        .step-btn:hover { background: #e5e7eb; color: #111827 !important;}
+
+        .search-btn { width: 100%; height: 54px; background: #111827; color: #ffffff !important; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; transition: 0.2s; }
+        .search-btn:hover { background: #1f2937; }
         .search-btn:disabled { background: #9ca3af; cursor: not-allowed; }
 
-        /* History Pills */
         .history-pills { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 32px; align-items: center; }
-        .history-pill { background: #e5e7eb; color: #4b5563; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; transition: 0.2s;}
-        .history-pill:hover { background: #1f2937; color: #ffffff; }
+        .history-pill { background: #e5e7eb; color: #4b5563 !important; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.2s;}
+        .history-pill:hover { background: #1f2937; color: #ffffff !important; }
 
-        /* Elegant Filter Bar & Custom Select */
         .results-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;}
-        .results-count { font-size: 16px; font-weight: 600; color: #111; }
         
-        .custom-select { appearance: none; padding: 8px 36px 8px 16px; border-radius: 8px; border: 1px solid #d1d5db; font-size: 13px; font-weight: 500; outline: none; background: #ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat right 10px center; cursor: pointer; color: #374151; transition: 0.2s;}
-        .custom-select:hover { border-color: #9ca3af; }
-
+        /* Fixed Sort Dropdown */
+        .custom-select { appearance: none; padding: 10px 40px 10px 16px; border-radius: 10px; border: 1px solid #d1d5db; font-size: 14px; font-weight: 600; outline: none; background: #ffffff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat right 12px center; cursor: pointer; color: #111827 !important; transition: 0.2s;}
+        
+        /* Fixed Mutual Exclusive Filters */
         .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
-        .filter-pill { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid #d1d5db; background: #ffffff; color: #4b5563; transition: 0.2s; }
+        .filter-pill { padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid #d1d5db; background: #ffffff; color: #4b5563 !important; transition: 0.2s; }
         .filter-pill:hover { border-color: #9ca3af; background: #f9fafb;}
-        .filter-pill.active { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; font-weight: 600;}
+        .filter-pill.active { background: #eff6ff; color: #2563eb !important; border-color: #93c5fd; font-weight: 700;}
         
-        /* Refined Train Card */
-        .train-card { background: #ffffff; border-radius: 12px; padding: 20px; margin-bottom: 16px; border: 1px solid #e5e7eb; box-shadow: 0 2px 8px rgba(0,0,0,0.02); transition: 0.2s;}
-        .train-card:hover { border-color: #d1d5db; box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
+        .train-card { background: #ffffff; border-radius: 16px; padding: 24px; margin-bottom: 16px; border: 1px solid #e5e7eb; box-shadow: 0 4px 15px rgba(0,0,0,0.02); transition: 0.2s;}
+        .train-card:hover { border-color: #d1d5db; box-shadow: 0 8px 25px rgba(0,0,0,0.05); }
         
-        .card-top { display: flex; justify-content: space-between; margin-bottom: 16px; align-items: flex-start; }
-        .train-name { font-size: 16px; font-weight: 600; color: #111; display: flex; align-items: center; gap: 6px;}
-        .train-num { font-size: 13px; color: #6b7280; font-weight: 400;}
+        .card-top { display: flex; justify-content: space-between; margin-bottom: 20px; align-items: flex-start; }
+        .train-name { font-size: 18px; font-weight: 700; color: #111827 !important; display: flex; align-items: center; gap: 8px;}
+        .train-num { font-size: 14px; color: #6b7280 !important; font-weight: 500;}
         
-        .badge-row { display: flex; gap: 6px; margin-bottom: 8px; }
-        .smart-badge { padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-        .badge-fastest { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
-        .badge-earliest { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
-        .badge-type { background: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb;}
+        .badge-row { display: flex; gap: 8px; margin-bottom: 8px; }
+        .smart-badge { padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+        .badge-fastest { background: #ecfdf5; color: #059669 !important; border: 1px solid #a7f3d0; }
+        .badge-earliest { background: #eff6ff; color: #2563eb !important; border: 1px solid #bfdbfe; }
+        .badge-type { background: #f3f4f6; color: #4b5563 !important; border: 1px solid #e5e7eb;}
         
-        /* Upgraded Journey Visualizer */
-        .journey-visual { display: flex; align-items: center; gap: 16px; padding: 16px 20px; background: #f9fafb; border-radius: 10px; border: 1px solid #f3f4f6;}
-        .time-text { font-size: 20px; font-weight: 600; color: #111; letter-spacing: -0.5px;}
-        .station-text { font-size: 11px; font-weight: 500; color: #6b7280; margin-top: 4px; letter-spacing: 0.3px;}
+        .journey-visual { display: flex; align-items: center; gap: 16px; padding: 16px 20px; background: #f9fafb; border-radius: 12px; border: 1px solid #f3f4f6;}
+        .time-text { font-size: 22px; font-weight: 700; color: #111827 !important; letter-spacing: -0.5px;}
+        .station-text { font-size: 12px; font-weight: 600; color: #6b7280 !important; margin-top: 4px; letter-spacing: 0.3px;}
         
         .track { flex: 1; height: 2px; background: #e5e7eb; position: relative; display: flex; justify-content: center; align-items: center;}
         .track::before, .track::after { content: ''; position: absolute; width: 6px; height: 6px; background: #9ca3af; border-radius: 50%; }
         .track::before { left: 0; } .track::after { right: 0; }
         
-        .duration-pill { background: #ffffff; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; color: #4b5563; border: 1px solid #e5e7eb; z-index: 1;}
+        .duration-pill { background: #ffffff; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 700; color: #4b5563 !important; border: 1px solid #e5e7eb; z-index: 1;}
 
-        .share-btn { background: #ffffff; color: #4b5563; border: 1px solid #d1d5db; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 4px;}
-        .share-btn:hover { background: #f3f4f6; color: #111; }
+        .share-btn { background: #ffffff; color: #4b5563 !important; border: 1px solid #d1d5db; padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 6px;}
+        .share-btn:hover { background: #f9fafb; color: #111827 !important; border-color: #9ca3af;}
         
-        .hub-btn { width: 100%; height: 48px; background: #ea580c; color: #ffffff; border: none; border-radius: 10px; font-weight: 600; font-size: 14px; cursor: pointer; margin-top: 16px; transition: 0.2s;}
+        .hub-btn { width: 100%; height: 52px; background: #ea580c; color: #ffffff !important; border: none; border-radius: 12px; font-weight: 700; font-size: 15px; cursor: pointer; margin-top: 16px; transition: 0.2s;}
         .hub-btn:hover { background: #c2410c; }
 
         @media (max-width: 600px) {
@@ -267,7 +275,6 @@ export default function App() {
 
       <div className="topbar">
         <div className="topbar-brand"><span className="brand-icon">🚆</span>RailFinder</div>
-        <span style={{fontSize:'12px', color:'#6b7280', fontWeight: 500}}>India Rail Search</span>
       </div>
 
       <div className="page">
@@ -286,10 +293,16 @@ export default function App() {
               <input className="premium-input" placeholder="e.g. NDLS" value={dest} onChange={e => setDest(e.target.value.toUpperCase())} maxLength={8}/>
             </div>
           </div>
-          <div className="date-row input-group">
-            <label>Date</label>
-            <input className="premium-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+          
+          <div className="date-stepper-wrap">
+            <button className="step-btn" onClick={() => changeDate(-1)}>⟨ Prev</button>
+            <div className="input-group" style={{flex: 1}}>
+              <label>Date</label>
+              <input className="premium-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+            </div>
+            <button className="step-btn" onClick={() => changeDate(1)}>Next ⟩</button>
           </div>
+
           <button className="search-btn" onClick={() => handleSearch()} disabled={loading || hubLoading}>
             {loading ? 'Searching...' : 'Search trains'}
           </button>
@@ -297,7 +310,7 @@ export default function App() {
 
         {history.length > 0 && (
           <div className="history-pills">
-            <span style={{fontSize: '11px', color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase'}}>Recent:</span>
+            <span style={{fontSize: '11px', color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase'}}>Recent:</span>
             {history.map((h, i) => (
               <div key={i} className="history-pill" onClick={() => handleSearch(h.src, h.dst, h.date)}>
                 {h.src} ➔ {h.dst}
@@ -306,31 +319,32 @@ export default function App() {
           </div>
         )}
 
-        {error && <div style={{color:'#b91c1c', background:'#fef2f2', padding:'12px', border:'1px solid #fecaca', borderRadius:'8px', marginBottom:'24px', textAlign:'center', fontWeight: 500, fontSize:'13px'}}>{error}</div>}
-        {(loading || hubLoading) && <div style={{textAlign:'center', padding:'40px 0', color:'#6b7280', fontWeight:500}}>🔄 {statusText}</div>}
+        {error && <div style={{color:'#b91c1c', background:'#fef2f2', padding:'14px', border:'1px solid #fecaca', borderRadius:'10px', marginBottom:'24px', textAlign:'center', fontWeight: 600, fontSize:'14px'}}>{error}</div>}
+        {(loading || hubLoading) && <div style={{textAlign:'center', padding:'40px 0', color:'#6b7280', fontWeight:600}}>🔄 {statusText}</div>}
 
         {!loading && searched && trains.length > 0 && (
           <>
             <div className="results-header">
-              <div className="results-count">{processedTrains.length} Direct Trains</div>
+              <div style={{fontSize: '18px', fontWeight: 800}}>{processedTrains.length} Direct Trains</div>
               <select className="custom-select" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
                 <option value="departure">Sort: Earliest First</option>
                 <option value="duration">Sort: Fastest Journey</option>
               </select>
             </div>
             
+            {/* STRICT SINGLE-SELECT FILTER BAR */}
             <div className="filter-bar">
-              <button className={`filter-pill ${filterTime === 'ALL' ? 'active' : ''}`} onClick={() => setFilterTime('ALL')}>All Day</button>
-              <button className={`filter-pill ${filterTime === 'MORNING' ? 'active' : ''}`} onClick={() => setFilterTime('MORNING')}>🌅 Morning (5a-11a)</button>
-              <button className={`filter-pill ${filterTime === 'NIGHT' ? 'active' : ''}`} onClick={() => setFilterTime('NIGHT')}>🌙 Night (6p-4a)</button>
-              <button className={`filter-pill ${filterPremium ? 'active' : ''}`} onClick={() => setFilterPremium(!filterPremium)}>⚡ Premium Only</button>
-              <button className={`filter-pill ${filterAC ? 'active' : ''}`} onClick={() => setFilterAC(!filterAC)}>❄️ AC Classes Only</button>
+              <button className={`filter-pill ${activeFilter === 'ALL' ? 'active' : ''}`} onClick={() => setActiveFilter('ALL')}>All Trains</button>
+              <button className={`filter-pill ${activeFilter === 'MORNING' ? 'active' : ''}`} onClick={() => setActiveFilter('MORNING')}>🌅 Morning (5a-11a)</button>
+              <button className={`filter-pill ${activeFilter === 'NIGHT' ? 'active' : ''}`} onClick={() => setActiveFilter('NIGHT')}>🌙 Night (6p-4a)</button>
+              <button className={`filter-pill ${activeFilter === 'PREMIUM' ? 'active' : ''}`} onClick={() => setActiveFilter('PREMIUM')}>⚡ Premium Only</button>
+              <button className={`filter-pill ${activeFilter === 'AC' ? 'active' : ''}`} onClick={() => setActiveFilter('AC')}>❄️ AC Classes Only</button>
             </div>
           </>
         )}
 
         {!loading && searched && processedTrains.length === 0 && trains.length > 0 && (
-           <div style={{textAlign:'center', padding:'40px', color:'#6b7280', fontWeight:500, background: '#ffffff', borderRadius: '12px', border: '1px solid #e5e7eb'}}>No trains match your current filters.</div>
+           <div style={{textAlign:'center', padding:'40px', color:'#6b7280', fontWeight:600, background: '#ffffff', borderRadius: '16px', border: '1px solid #e5e7eb'}}>No trains match the selected filter.</div>
         )}
 
         {!loading && searched && processedTrains.map((t, i) => {
@@ -351,8 +365,7 @@ export default function App() {
                   </div>
                 </div>
                 <button className="share-btn" onClick={() => shareToWhatsApp(t)}>
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
-                  Share
+                  Share 💬
                 </button>
               </div>
               
@@ -370,38 +383,14 @@ export default function App() {
                 </div>
               </div>
               {t.class_type && (
-                <div style={{fontSize: '12px', fontWeight: 500, color: '#6b7280', marginTop: '12px'}}>
-                  Classes: <span style={{color: '#1f2937'}}>{t.class_type.join(', ')}</span>
+                <div style={{fontSize: '13px', fontWeight: 600, color: '#6b7280', marginTop: '16px'}}>
+                  Available Classes: <span style={{color: '#1f2937'}}>{t.class_type.join(', ')}</span>
                 </div>
               )}
             </div>
           );
         })}
-
-        {!loading && searched && trains.length === 0 && altRoutes.length === 0 && !hubLoading && (
-          <div style={{textAlign:'center', background:'#ffffff', padding:'40px 24px', borderRadius:'16px', border: '1px solid #e5e7eb'}}>
-            <h3 style={{fontSize:'18px', fontWeight:600, marginBottom:'8px', color: '#111'}}>No direct trains found</h3>
-            <p style={{color:'#6b7280', fontSize:'14px', marginBottom:'24px', lineHeight: '1.5'}}>Our system can scan major transit hubs to find a smart connecting route.</p>
-            <button className="hub-btn" onClick={searchConnections}>Scan Connecting Routes</button>
-          </div>
-        )}
-
-        {!hubLoading && altRoutes.map((c, i) => (
-          <div className="train-card" style={{borderLeft: '4px solid #ea580c'}} key={`alt-${i}`}>
-            <h3 style={{color: '#ea580c', fontSize:'13px', fontWeight:700, marginBottom:'16px', textTransform:'uppercase', letterSpacing: '0.5px'}}>VIA {c.hub} (Layover: {c.layover}h)</h3>
-            <div className="journey-visual" style={{marginBottom:'12px', background: '#ffffff', border: '1px solid #f3f4f6'}}>
-              <div><div className="time-text">{c.leg1.from_std}</div></div>
-              <div className="track"><span className="duration-pill">Leg 1 ({c.leg1.train_name})</span></div>
-              <div style={{textAlign:'right'}}><div className="time-text">{c.leg1.to_sta}</div></div>
-            </div>
-            <div className="journey-visual" style={{background: '#ffffff', border: '1px solid #f3f4f6'}}>
-              <div><div className="time-text">{c.leg2.from_std}</div></div>
-              <div className="track"><span className="duration-pill">Leg 2 ({c.leg2.train_name})</span></div>
-              <div style={{textAlign:'right'}}><div className="time-text">{c.leg2.to_sta}</div></div>
-            </div>
-          </div>
-        ))}
       </div>
-    </>
+    </div>
   );
 }
