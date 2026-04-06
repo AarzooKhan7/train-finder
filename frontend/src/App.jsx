@@ -20,6 +20,11 @@ export default function App() {
   const [sortBy, setSortBy] = useState('departure'); 
   const [history, setHistory] = useState([]);
 
+  // --- NEW FEATURES: ZERO-TOKEN FILTERS ---
+  const [filterTime, setFilterTime] = useState('ALL'); // ALL, MORNING, NIGHT
+  const [filterPremium, setFilterPremium] = useState(false); // Vande Bharat/Shatabdi/Rajdhani only
+  const [filterAC, setFilterAC] = useState(false); // AC classes only
+
   useEffect(() => { loadHistory(); }, []);
 
   const loadHistory = () => {
@@ -44,6 +49,9 @@ export default function App() {
     setSource(s); setDest(d); setDate(dt);
     setLoading(true); setError(''); setTrains([]); setAltRoutes([]); setSearched(false);
     
+    // Reset Filters on new search
+    setFilterTime('ALL'); setFilterPremium(false); setFilterAC(false); setSortBy('departure');
+
     const cacheKey = `DIRECT-${s}-${d}-${dt}`;
 
     if (getCache(cacheKey)) {
@@ -119,25 +127,42 @@ export default function App() {
     setHubLoading(false);
   };
 
-  // --- SMART BADGE CALCULATIONS ---
-  let fastestIndex = -1;
-  let earliestIndex = -1;
-  
-  const sortedTrains = [...trains].sort((a, b) => {
+  // --- SMART FILTER & SORT ENGINE ---
+  let processedTrains = [...trains];
+
+  // 1. Apply Time Filter
+  if (filterTime === 'MORNING') {
+    processedTrains = processedTrains.filter(t => parseInt(t.from_std.split(':')[0]) >= 5 && parseInt(t.from_std.split(':')[0]) <= 11);
+  } else if (filterTime === 'NIGHT') {
+    processedTrains = processedTrains.filter(t => parseInt(t.from_std.split(':')[0]) >= 18 || parseInt(t.from_std.split(':')[0]) <= 4);
+  }
+
+  // 2. Apply Premium Filter
+  if (filterPremium) {
+    const premiumCodes = ['VBEX', 'SHT', 'RAJ', 'TEJ'];
+    processedTrains = processedTrains.filter(t => premiumCodes.includes(t.train_type) || t.train_name.toUpperCase().includes('VANDE') || t.train_name.toUpperCase().includes('SHATABDI'));
+  }
+
+  // 3. Apply AC Filter
+  if (filterAC) {
+    const acClasses = ['1A', '2A', '3A', '3E', 'CC', 'EC', 'EV'];
+    processedTrains = processedTrains.filter(t => t.class_type && t.class_type.some(c => acClasses.includes(c)));
+  }
+
+  // 4. Sort
+  processedTrains.sort((a, b) => {
     const minsA = a.duration ? parseInt(a.duration.split(':')[0]) * 60 + parseInt(a.duration.split(':')[1]) : Infinity;
     const minsB = b.duration ? parseInt(b.duration.split(':')[0]) * 60 + parseInt(b.duration.split(':')[1]) : Infinity;
-    
     if (sortBy === 'duration') return minsA - minsB;
     return a.from_std.localeCompare(b.from_std);
   });
 
-  if (sortedTrains.length > 0) {
-    // Find Earliest
-    earliestIndex = 0; // Because default sort is departure time, index 0 is earliest
-    
-    // Find Fastest
+  // Calculate Badges on the FILTERED results
+  let fastestIndex = -1, earliestIndex = -1;
+  if (processedTrains.length > 0) {
+    earliestIndex = 0; 
     let minDuration = Infinity;
-    sortedTrains.forEach((t, i) => {
+    processedTrains.forEach((t, i) => {
       if (t.duration) {
         const mins = parseInt(t.duration.split(':')[0]) * 60 + parseInt(t.duration.split(':')[1]);
         if (mins < minDuration) { minDuration = mins; fastestIndex = i; }
@@ -145,7 +170,11 @@ export default function App() {
     });
   }
 
-  const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  // --- NEW FEATURE: WHATSAPP SHARE ---
+  const shareToWhatsApp = (t) => {
+    const text = `🚆 *${t.train_name} (${t.train_number})*\n🗓 ${date}\n📍 ${t.from_station_name} (${t.from_std}) ➔ ${t.to_station_name} (${t.to_sta})\n⏱ Duration: ${t.duration || 'N/A'}\n\nSearched via RailFinder`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+  };
 
   return (
     <>
@@ -154,7 +183,6 @@ export default function App() {
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body { background: #f0eee9; font-family: 'Inter', sans-serif; color: #111; padding-bottom: 80px; }
         
-        /* Premium Topbar */
         .topbar { background: #111; color: #fff; padding: 0 32px; height: 64px; display: flex; align-items: center; justify-content: space-between; }
         .topbar-brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; letter-spacing: -0.5px; }
         .brand-icon { font-size: 20px; }
@@ -163,7 +191,6 @@ export default function App() {
         .page-title { font-size: 36px; font-weight: 800; letter-spacing: -1px; margin-bottom: 8px; }
         .page-subtitle { font-size: 16px; color: #666; margin-bottom: 32px; }
         
-        /* Search Card matching Screenshot */
         .search-card { background: #fff; border-radius: 20px; padding: 24px; margin-bottom: 24px; box-shadow: 0 8px 30px rgba(0,0,0,0.04); }
         .fields-grid { display: grid; grid-template-columns: 1fr 48px 1fr; gap: 16px; margin-bottom: 16px; align-items: center; }
         .date-row { margin-bottom: 24px; }
@@ -180,12 +207,15 @@ export default function App() {
         .search-btn:hover { background: #333; transform: translateY(-1px); }
         .search-btn:disabled { background: #999; cursor: not-allowed; transform: none; }
 
-        /* History & Badges */
         .history-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 32px; align-items: center; }
         .history-pill { background: #e5e3de; color: #444; padding: 8px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s;}
         .history-pill:hover { background: #111; color: #fff; }
+
+        /* Filter Bar UI */
+        .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+        .filter-pill { padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 700; cursor: pointer; border: 1px solid #ddd; background: #fff; color: #666; transition: 0.2s; }
+        .filter-pill.active { background: #111; color: #fff; border-color: #111; }
         
-        /* Train Cards */
         .train-card { background: #fff; border-radius: 16px; padding: 20px; margin-bottom: 16px; border: 1px solid #eee; box-shadow: 0 4px 15px rgba(0,0,0,0.02); }
         .card-top { display: flex; justify-content: space-between; margin-bottom: 16px; align-items: flex-start; }
         .train-name { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; }
@@ -203,12 +233,14 @@ export default function App() {
         .track::before { left: 0; } .track::after { right: 0; }
         .duration-pill { background: #fff; padding: 4px 10px; border-radius: 10px; font-size: 11px; font-weight: 700; color: #6b7280; border: 1px solid #e5e7eb; z-index: 1;}
 
+        .share-btn { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; padding: 6px 12px; border-radius: 10px; font-size: 12px; font-weight: 700; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 4px;}
+        .share-btn:hover { background: #d1fae5; }
         .hub-btn { width: 100%; height: 50px; background: #ea580c; color: #fff; border: none; border-radius: 12px; font-weight: 700; font-size: 15px; cursor: pointer; margin-top: 16px; transition: 0.2s;}
         .hub-btn:hover { background: #c2410c; }
 
         @media (max-width: 600px) {
           .fields-grid { grid-template-columns: 1fr; gap: 12px; }
-          .swap-btn { display: none; } /* Hide swap on mobile for cleaner stack */
+          .swap-btn { display: none; }
         }
       `}</style>
 
@@ -257,21 +289,36 @@ export default function App() {
         {error && <div style={{color:'#dc2626', background:'#fef2f2', padding:'12px', borderRadius:'10px', marginBottom:'20px', textAlign:'center', fontWeight: 600, fontSize:'14px'}}>{error}</div>}
         {(loading || hubLoading) && <div style={{textAlign:'center', padding:'40px 0', color:'#666', fontWeight:600}}>🔄 {statusText}</div>}
 
-        {/* RESULTS HEADER & SORTING */}
+        {/* HEADER & UI CONTROLS */}
         {!loading && searched && trains.length > 0 && (
-          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}>
-            <div style={{fontSize: '16px', fontWeight: 800}}>{trains.length} Direct Trains</div>
-            <select style={{padding: '8px 16px', borderRadius: '10px', border: '1px solid #ddd', fontSize: '13px', fontWeight: 600, outline:'none', background:'#fff', cursor:'pointer'}} value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-              <option value="departure">Sort: Earliest First</option>
-              <option value="duration">Sort: Fastest Journey</option>
-            </select>
-          </div>
+          <>
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'}}>
+              <div style={{fontSize: '18px', fontWeight: 800}}>{processedTrains.length} Trains Found</div>
+              <select style={{padding: '8px 16px', borderRadius: '10px', border: '1px solid #ddd', fontSize: '13px', fontWeight: 600, outline:'none', background:'#fff', cursor:'pointer'}} value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                <option value="departure">Sort: Earliest First</option>
+                <option value="duration">Sort: Fastest Journey</option>
+              </select>
+            </div>
+            
+            {/* ZERO TOKEN FILTERS */}
+            <div className="filter-bar">
+              <button className={`filter-pill ${filterTime === 'ALL' ? 'active' : ''}`} onClick={() => setFilterTime('ALL')}>All Day</button>
+              <button className={`filter-pill ${filterTime === 'MORNING' ? 'active' : ''}`} onClick={() => setFilterTime('MORNING')}>🌅 Morning (5a-11a)</button>
+              <button className={`filter-pill ${filterTime === 'NIGHT' ? 'active' : ''}`} onClick={() => setFilterTime('NIGHT')}>🌙 Night (6p-4a)</button>
+              <button className={`filter-pill ${filterPremium ? 'active' : ''}`} onClick={() => setFilterPremium(!filterPremium)}>⚡ Premium Only</button>
+              <button className={`filter-pill ${filterAC ? 'active' : ''}`} onClick={() => setFilterAC(!filterAC)}>❄️ AC Classes Only</button>
+            </div>
+          </>
         )}
 
         {/* DIRECT TRAINS RESULTS */}
-        {!loading && searched && sortedTrains.map((t, i) => {
-          const isFastest = (i === fastestIndex && trains.length > 1);
-          const isEarliest = (i === earliestIndex && trains.length > 1 && sortBy === 'departure');
+        {!loading && searched && processedTrains.length === 0 && trains.length > 0 && (
+           <div style={{textAlign:'center', padding:'30px', color:'#888', fontWeight:600}}>No trains match your current filters.</div>
+        )}
+
+        {!loading && searched && processedTrains.map((t, i) => {
+          const isFastest = (i === fastestIndex && processedTrains.length > 1);
+          const isEarliest = (i === earliestIndex && processedTrains.length > 1 && sortBy === 'departure');
           
           return (
             <div className="train-card" key={i}>
@@ -284,6 +331,7 @@ export default function App() {
                   </div>
                   <div className="train-name">{t.train_name} <span style={{color:'#888', fontSize:'14px'}}>#{t.train_number}</span></div>
                 </div>
+                <button className="share-btn" onClick={() => shareToWhatsApp(t)}>Share 💬</button>
               </div>
               
               <div className="journey-visual">
@@ -291,6 +339,11 @@ export default function App() {
                 <div className="track"><span className="duration-pill">{t.duration || 'N/A'}</span></div>
                 <div style={{textAlign:'right'}}><div className="time-text">{t.to_sta}</div><div className="station-text">{t.to_station_name}</div></div>
               </div>
+              {t.class_type && (
+                <div style={{fontSize: '11px', fontWeight: 700, color: '#888', marginTop: '10px'}}>
+                  Classes: <span style={{color: '#111'}}>{t.class_type.join(', ')}</span>
+                </div>
+              )}
             </div>
           );
         })}
@@ -322,6 +375,5 @@ export default function App() {
         ))}
       </div>
     </>
-    
   );
 }
