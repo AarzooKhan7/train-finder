@@ -1,32 +1,29 @@
 import { useState, useEffect } from 'react';
 import html2canvas from 'html2canvas';
 
-// Hardcoded Station Dictionary for Auto-complete
+// Hardcoded Station Dictionary - Now includes FBG!
 const STATIONS = [
   { code: 'NDLS', name: 'New Delhi' }, { code: 'ANVT', name: 'Anand Vihar Terminal' },
   { code: 'CNB', name: 'Kanpur Central' }, { code: 'JBN', name: 'Jogbani' },
-  { code: 'PNBE', name: 'Patna Junction' }, { code: 'HWH', name: 'Howrah Junction' },
-  { code: 'CSTM', name: 'Mumbai CSMT' }, { code: 'SBC', name: 'KSR Bengaluru' },
-  { code: 'MAS', name: 'Chennai Central' }, { code: 'BPL', name: 'Bhopal Junction' },
-  { code: 'DDU', name: 'Pt. DD Upadhyaya' }, { code: 'LKO', name: 'Lucknow Charbagh' },
-  { code: 'BSB', name: 'Varanasi Junction' }, { code: 'PUNE', name: 'Pune Junction' }
+  { code: 'FBG', name: 'Forbesganj' }, { code: 'PNBE', name: 'Patna Junction' }, 
+  { code: 'HWH', name: 'Howrah Junction' }, { code: 'CSTM', name: 'Mumbai CSMT' }, 
+  { code: 'SBC', name: 'KSR Bengaluru' }, { code: 'MAS', name: 'Chennai Central' }, 
+  { code: 'BPL', name: 'Bhopal Junction' }, { code: 'DDU', name: 'Pt. DD Upadhyaya' }, 
+  { code: 'LKO', name: 'Lucknow Charbagh' }, { code: 'BSB', name: 'Varanasi Junction' }
 ];
 
 const TRANSIT_HUBS = ['NDLS', 'CNB', 'PNBE', 'DDU', 'ET', 'HWH', 'VGLJ', 'BZA'];
 const BACKEND_URL = "https://train-finder-mu.vercel.app/api/search";
 
 export default function App() {
-  // Theme State
   const [darkMode, setDarkMode] = useState(false);
 
-  // Core States
   const [source, setSource] = useState('JBN');
   const [dest, setDest] = useState('NDLS');
   const [date, setDate] = useState('2026-04-15');
   const [trains, setTrains] = useState([]);
   const [altRoutes, setAltRoutes] = useState([]);
   
-  // UI States
   const [loading, setLoading] = useState(false);
   const [hubLoading, setHubLoading] = useState(false);
   const [statusText, setStatusText] = useState('');
@@ -37,7 +34,6 @@ export default function App() {
   const [expandedTrainId, setExpandedTrainId] = useState(null); 
   const [activeFilter, setActiveFilter] = useState('ALL'); 
 
-  // Autocomplete States
   const [srcFocus, setSrcFocus] = useState(false);
   const [dstFocus, setDstFocus] = useState(false);
 
@@ -77,13 +73,11 @@ export default function App() {
     setDate(d.toISOString().split('T')[0]);
   };
 
-  // --- NEW FEATURE: SMART TICKET DOWNLOAD ---
   const downloadTicket = async (trainId, e) => {
     e.stopPropagation();
     const element = document.getElementById(`ticket-${trainId}`);
     if (!element) return;
     
-    // Briefly adjust styling for clean export
     element.classList.add('exporting');
     const canvas = await html2canvas(element, { scale: 2, backgroundColor: darkMode ? '#1e293b' : '#ffffff' });
     element.classList.remove('exporting');
@@ -210,11 +204,12 @@ export default function App() {
         
         .rail-app-wrapper { background: #f7f7f9; font-family: 'Inter', sans-serif; color: #111827; min-height: 100vh; padding-bottom: 80px; -webkit-font-smoothing: antialiased; transition: background 0.3s ease;}
         
-        /* Dark Mode Colors */
+        /* Dark Mode Overrides */
         .dark-mode { background: #0f172a; color: #f8fafc; }
         .dark-mode .topbar, .dark-mode .search-card, .dark-mode .train-card { background: #1e293b; border-color: #334155; }
-        .dark-mode .premium-input, .dark-mode .custom-select, .dark-mode .filter-pill, .dark-mode .autocomplete-dropdown { background: #0f172a; border-color: #334155; color: #f8fafc; }
+        .dark-mode .premium-input, .dark-mode .custom-select, .dark-mode .filter-pill, .dark-mode .autocomplete-dropdown { background: #0f172a !important; border-color: #334155 !important; color: #f8fafc !important; }
         .dark-mode .premium-input::placeholder { color: #64748b !important; }
+        .dark-mode input.premium-input:-webkit-autofill { -webkit-box-shadow: 0 0 0 30px #0f172a inset !important; -webkit-text-fill-color: #f8fafc !important; }
         .dark-mode .search-btn { background: #38bdf8; color: #0f172a !important; }
         .dark-mode .search-btn:hover { background: #0284c7; }
         .dark-mode .swap-btn, .dark-mode .step-btn, .dark-mode .history-pill { background: #334155; border-color: #475569; color: #f8fafc !important; }
@@ -231,25 +226,24 @@ export default function App() {
         .dark-mode .day-active { background: #38bdf8; color: #0f172a !important; }
         .dark-mode .autocomplete-item:hover { background: #1e293b; }
 
-        /* Core Layout */
         .topbar { background: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 0 32px; height: 64px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; transition: 0.3s;}
         .topbar-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; letter-spacing: -0.5px;}
         .theme-toggle { background: none; border: none; font-size: 20px; cursor: pointer; padding: 8px; border-radius: 50%; transition: 0.2s; }
         .theme-toggle:hover { background: rgba(0,0,0,0.05); }
-        .dark-mode .theme-toggle:hover { background: rgba(255,255,255,0.1); }
         
         .page { max-width: 800px; margin: 0 auto; padding: 40px 24px 0; }
         .page-title { font-size: 32px; font-weight: 800; letter-spacing: -1px; margin-bottom: 6px; }
         .page-subtitle { font-size: 15px; color: #6b7280; margin-bottom: 32px; font-weight: 500;}
         
-        /* Search Card & Auto-complete */
         .search-card { background: #ffffff; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.03); border: 1px solid #f3f4f6; transition: 0.3s;}
         .fields-grid { display: grid; grid-template-columns: 1fr 44px 1fr; gap: 16px; margin-bottom: 20px; align-items: center; }
         .input-group { display: flex; flex-direction: column; gap: 8px; position: relative;}
         .input-group label { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
         
-        .premium-input { height: 50px; border: 1px solid #d1d5db; border-radius: 12px; padding: 0 16px; font-size: 16px; font-weight: 600; font-family: inherit; outline: none; width: 100%; transition: 0.2s;}
-        .premium-input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+        /* AGGRESSIVE CSS OVERRIDES FOR BROKEN INPUTS */
+        .premium-input { height: 50px; border: 1px solid #d1d5db !important; border-radius: 12px; padding: 0 16px; font-size: 16px; font-weight: 600; font-family: inherit; outline: none; width: 100%; transition: 0.2s; background-color: #ffffff !important; color: #111827 !important;}
+        .premium-input:focus { border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+        input.premium-input:-webkit-autofill, input.premium-input:-webkit-autofill:hover, input.premium-input:-webkit-autofill:focus, input.premium-input:-webkit-autofill:active { -webkit-box-shadow: 0 0 0 30px white inset !important; -webkit-text-fill-color: #111827 !important; }
         
         .autocomplete-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; margin-top: 4px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); z-index: 100; overflow: hidden; }
         .autocomplete-item { padding: 12px 16px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; justify-content: space-between; border-bottom: 1px solid #f3f4f6;}
@@ -263,7 +257,6 @@ export default function App() {
         
         .search-btn { width: 100%; height: 54px; background: #111827; color: #ffffff; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; transition: 0.2s; }
 
-        /* Filters */
         .history-pills { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 32px; align-items: center; }
         .history-pill { background: #e5e7eb; color: #4b5563; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.2s;}
         
@@ -274,12 +267,9 @@ export default function App() {
         .filter-pill { padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid #d1d5db; background: #ffffff; color: #4b5563; transition: 0.2s; }
         .filter-pill.active { background: #eff6ff; color: #2563eb; border-color: #93c5fd; font-weight: 700;}
         
-        /* Train Cards */
         .train-card { background: #ffffff; border-radius: 16px; padding: 24px; margin-bottom: 16px; border: 1px solid #e5e7eb; box-shadow: 0 4px 15px rgba(0,0,0,0.02); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer; overflow: hidden; position: relative;}
         .train-card:hover { border-color: #d1d5db; box-shadow: 0 8px 25px rgba(0,0,0,0.06); transform: translateY(-2px);}
         .train-card.expanded { border-color: #2563eb; box-shadow: 0 12px 30px rgba(37, 99, 235, 0.1); transform: none;}
-        
-        /* Export Mode (Hides elements when downloading image) */
         .train-card.exporting { border: none !important; box-shadow: none !important; transform: none !important; border-radius: 0; }
         .train-card.exporting .action-btn, .train-card.exporting .chevron-icon { display: none !important; }
 
@@ -289,12 +279,9 @@ export default function App() {
         
         .badge-row { display: flex; gap: 8px; margin-bottom: 8px; }
         .smart-badge { padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-        
-        /* Animated Pulse for Fastest Badge */
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(5, 150, 105, 0); } 100% { box-shadow: 0 0 0 0 rgba(5, 150, 105, 0); } }
         .badge-fastest { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; animation: pulse 2s infinite;}
-        .dark-mode .badge-fastest { animation: none; } /* Disable pulse in dark mode for cleaner look */
-        
+        .dark-mode .badge-fastest { animation: none; }
         .badge-earliest { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
         .badge-type { background: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb;}
         
