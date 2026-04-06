@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
-// The major hubs that connect the North, South, East, and West.
 const TRANSIT_HUBS = ['NDLS', 'CNB', 'PNBE', 'DDU', 'ET', 'HWH', 'VGLJ', 'BZA'];
 const BACKEND_URL = "https://train-finder-mu.vercel.app/api/search";
 
@@ -18,29 +17,39 @@ export default function App() {
   const [error, setError] = useState('');
   const [searched, setSearched] = useState(false);
 
+  // NEW FEATURE STATE: Sorting & History
+  const [sortBy, setSortBy] = useState('departure'); 
+  const [history, setHistory] = useState([]);
+
+  // --- NEW FEATURE: Load History on Startup ---
+  useEffect(() => {
+    loadHistory();
+  }, []);
+
+  const loadHistory = () => {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('DIRECT-'));
+    const parsed = keys.map(k => {
+      const parts = k.split('-'); // e.g. DIRECT-CNB-NDLS-2026-04-15
+      return { src: parts[1], dst: parts[2], date: `${parts[3]}-${parts[4]}-${parts[5]}` };
+    }).reverse().slice(0, 4); // Get 4 most recent
+    setHistory(parsed);
+  };
+
   const swap = () => { setSource(dest); setDest(source); };
+  const formatApiDate = (dateStr) => { const [y, m, d] = dateStr.split('-'); return `${d}-${m}-${y}`; };
+  const getCache = (key) => { const saved = localStorage.getItem(key); return saved ? JSON.parse(saved) : null; };
+  const setCache = (key, data) => { localStorage.setItem(key, JSON.stringify(data)); loadHistory(); };
 
-  // --- HELPER FUNCTIONS ---
-  const formatApiDate = (dateStr) => {
-    const [y, m, d] = dateStr.split('-');
-    return `${d}-${m}-${y}`;
-  };
+  // --- STAGE 1: DIRECT SEARCH ---
+  const handleSearch = async (overrideSrc, overrideDst, overrideDate) => {
+    const s = (overrideSrc || source).trim().toUpperCase();
+    const d = (overrideDst || dest).trim().toUpperCase();
+    const dt = overrideDate || date;
 
-  const getCache = (key) => {
-    const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) : null;
-  };
-
-  const setCache = (key, data) => localStorage.setItem(key, JSON.stringify(data));
-
-  // --- STAGE 1: DIRECT SEARCH (1 Token) ---
-  // --- STAGE 1: DIRECT SEARCH (1 Token) ---
-  const handleSearch = async () => {
+    setSource(s); setDest(d); setDate(dt);
     setLoading(true); setError(''); setTrains([]); setAltRoutes([]); setSearched(false);
     
-    const src = source.trim().toUpperCase();
-    const dst = dest.trim().toUpperCase();
-    const cacheKey = `DIRECT-${src}-${dst}-${date}`;
+    const cacheKey = `DIRECT-${s}-${d}-${dt}`;
 
     if (getCache(cacheKey)) {
       setTrains(getCache(cacheKey));
@@ -48,9 +57,8 @@ export default function App() {
     }
 
     try {
-      setStatusText(`Looking up ${src} → ${dst}`);
-      // FIX: Passing the 'date' directly without flipping it
-      const res = await fetch(`${BACKEND_URL}?source=${src}&dest=${dst}&date=${date}`);
+      setStatusText(`Looking up ${s} → ${d}`);
+      const res = await fetch(`${BACKEND_URL}?source=${s}&dest=${d}&date=${dt}`);
       const json = await res.json();
       
       if (json.status && json.data?.length > 0) {
@@ -63,20 +71,16 @@ export default function App() {
     setLoading(false); setSearched(true);
   };
 
-  // --- STAGE 2: HUB SEARCH (Costs more tokens) ---
+  // --- STAGE 2: HUB SEARCH ---
   const searchConnections = async () => {
     setHubLoading(true); setError('');
     const src = source.trim().toUpperCase();
     const dst = dest.trim().toUpperCase();
     const cacheKey = `ALT-${src}-${dst}-${date}`;
 
-    if (getCache(cacheKey)) {
-      setAltRoutes(getCache(cacheKey));
-      setHubLoading(false); return;
-    }
+    if (getCache(cacheKey)) { setAltRoutes(getCache(cacheKey)); setHubLoading(false); return; }
 
     try {
-      // FIX: Using the raw YYYY-MM-DD strings directly
       const apiToday = date; 
       const nextDayObj = new Date(date);
       nextDayObj.setDate(nextDayObj.getDate() + 1);
@@ -100,11 +104,9 @@ export default function App() {
               l2Data.data.forEach(t2 => {
                 const arrivalAtHub = new Date(`${date}T${t1.to_sta}:00`).getTime();
                 let departureFromHub = new Date(`${date}T${t2.from_std}:00`).getTime();
-                
                 if (departureFromHub < arrivalAtHub) {
                   departureFromHub = new Date(`${apiTomorrow}T${t2.from_std}:00`).getTime();
                 }
-
                 const diffHours = (departureFromHub - arrivalAtHub) / (1000 * 60 * 60);
 
                 if (diffHours >= 1 && diffHours <= 20) {
@@ -118,12 +120,21 @@ export default function App() {
       const finalAlt = connections.sort((a, b) => a.layover - b.layover);
       setAltRoutes(finalAlt);
       setCache(cacheKey, finalAlt);
-
     } catch (err) {
       setError("Quota limit exceeded while searching hubs.");
     }
     setHubLoading(false);
   };
+
+  // --- NEW FEATURE: Smart Sorting Logic ---
+  const sortedTrains = [...trains].sort((a, b) => {
+    if (sortBy === 'duration' && a.duration && b.duration) {
+      const minsA = parseInt(a.duration.split(':')[0]) * 60 + parseInt(a.duration.split(':')[1]);
+      const minsB = parseInt(b.duration.split(':')[0]) * 60 + parseInt(b.duration.split(':')[1]);
+      return minsA - minsB;
+    }
+    return a.from_std.localeCompare(b.from_std); // Default: Departure time
+  });
 
   const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
@@ -137,10 +148,10 @@ export default function App() {
         .topbar-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -0.3px; }
         .brand-icon { width: 30px; height: 30px; background: #1a1a1a; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; }
         .page { max-width: 720px; margin: 0 auto; padding: 40px 24px 0; }
-        .search-card { background: #fff; border: 1px solid #e8e8e5; border-radius: 16px; padding: 20px; margin-bottom: 32px; }
+        .search-card { background: #fff; border: 1px solid #e8e8e5; border-radius: 16px; padding: 20px; margin-bottom: 20px; }
         .fields { display: grid; grid-template-columns: 1fr 36px 1fr 160px; gap: 10px; margin-bottom: 14px; align-items: end; }
         .field label { display: block; font-size: 11px; font-weight: 600; color: #aaa; margin-bottom: 6px; text-transform: uppercase;}
-        .field input { width: 100%; height: 42px; background: #f8f8f6; border: 1px solid #e4e4e1; border-radius: 10px; padding: 0 14px; font-weight: 600; outline: none; }
+        .field input, .field select { width: 100%; height: 42px; background: #f8f8f6; border: 1px solid #e4e4e1; border-radius: 10px; padding: 0 14px; font-weight: 600; outline: none; font-family: inherit;}
         .search-btn { width: 100%; height: 44px; background: #1a1a1a; color: #fff; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; }
         .hub-btn { width: 100%; height: 44px; background: #f97316; color: #fff; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; margin-top: 10px; }
         .train-card { background: #fff; border: 1px solid #e8e8e5; border-radius: 14px; padding: 18px 20px; margin-bottom: 12px; }
@@ -153,6 +164,9 @@ export default function App() {
         .track-line { width: 100%; height: 1px; background: #ddd; position: relative; }
         .empty { text-align: center; padding: 40px 0; background: #fff; border-radius: 16px; border: 1px dashed #ccc; }
         .conn-card { border-left: 5px solid #f97316; }
+        .history-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 30px; }
+        .history-pill { background: #e8e8e5; color: #555; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.2s;}
+        .history-pill:hover { background: #1a1a1a; color: #fff; }
       `}</style>
 
       <div className="topbar">
@@ -162,7 +176,7 @@ export default function App() {
 
       <div className="page">
         <h1 style={{fontSize: '26px', fontWeight: 700, marginBottom: '4px'}}>Find trains</h1>
-        <p style={{fontSize: '14px', color: '#888', marginBottom: '28px'}}>Search direct & connecting routes</p>
+        <p style={{fontSize: '14px', color: '#888', marginBottom: '20px'}}>Search direct & connecting routes</p>
 
         <div className="search-card">
           <div className="fields">
@@ -180,28 +194,46 @@ export default function App() {
               <input type="date" value={date} onChange={e => setDate(e.target.value)} />
             </div>
           </div>
-          <button className="search-btn" onClick={handleSearch} disabled={loading || hubLoading}>
+          <button className="search-btn" onClick={() => handleSearch()} disabled={loading || hubLoading}>
             {loading ? 'Searching Direct...' : 'Search trains'}
           </button>
         </div>
 
-        {error && <div style={{color:'red', marginBottom:'20px', textAlign:'center'}}>{error}</div>}
+        {/* RECENT SEARCHES */}
+        {history.length > 0 && (
+          <div className="history-pills">
+            <span style={{fontSize: '12px', color: '#aaa', alignSelf: 'center'}}>Recent:</span>
+            {history.map((h, i) => (
+              <div key={i} className="history-pill" onClick={() => handleSearch(h.src, h.dst, h.date)}>
+                {h.src} → {h.dst}
+              </div>
+            ))}
+          </div>
+        )}
 
-        {/* LOADING STATE */}
-        {(loading || hubLoading) && (
-          <div style={{textAlign:'center', padding:'40px 0', color:'#888'}}>
-            <p>🔄 {statusText}</p>
+        {error && <div style={{color:'red', marginBottom:'20px', textAlign:'center'}}>{error}</div>}
+        {(loading || hubLoading) && <div style={{textAlign:'center', padding:'40px 0', color:'#888'}}><p>🔄 {statusText}</p></div>}
+
+        {/* RESULTS HEADER & SORTING */}
+        {!loading && searched && trains.length > 0 && (
+          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'}}>
+            <div style={{fontSize: '14px', fontWeight: 700}}>{trains.length} Direct Trains Found</div>
+            <select style={{padding: '6px 12px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '12px', fontWeight: 600, outline:'none'}} value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+              <option value="departure">Sort: Earliest First</option>
+              <option value="duration">Sort: Fastest Journey</option>
+            </select>
           </div>
         )}
 
         {/* DIRECT TRAINS RESULTS */}
-        {!loading && searched && trains.map((t, i) => (
+        {!loading && searched && sortedTrains.map((t, i) => (
           <div className="train-card" key={i}>
             <div className="card-top">
               <div>
                 {t.train_type && <div className="train-type-badge">{t.train_type}</div>}
                 <div className="train-name">{t.train_name} (#{t.train_number})</div>
               </div>
+              {t.duration && <div style={{fontSize: '12px', fontWeight: 600, color: '#666', background: '#f2f2f0', padding: '4px 8px', borderRadius: '6px'}}>⏱ {t.duration}</div>}
             </div>
             <div className="journey">
               <div><div className="time-big">{t.from_std}</div><div style={{fontSize:'10px', color:'#aaa'}}>{t.from_station_name}</div></div>
