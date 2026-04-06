@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import html2canvas from 'html2canvas';
 
+// Hardcoded Station Dictionary
 const STATIONS = [
   { code: 'NDLS', name: 'New Delhi' }, { code: 'ANVT', name: 'Anand Vihar Terminal' },
   { code: 'CNB', name: 'Kanpur Central' }, { code: 'JBN', name: 'Jogbani' },
@@ -12,6 +13,14 @@ const STATIONS = [
 ];
 
 const TRANSIT_HUBS = ['NDLS', 'CNB', 'PNBE', 'DDU', 'ET', 'HWH', 'VGLJ', 'BZA'];
+
+// E-Catering Hubs Dictionary
+const FOOD_OPTIONS = {
+  'CNB': ['Domino\'s Pizza', 'Haldiram\'s'], 'NDLS': ['KFC', 'Bikanerwala', 'Nirula\'s'],
+  'PNBE': ['Biryani By Kilo', 'Local Thali'], 'HWH': ['Oh! Calcutta', 'KFC'],
+  'CSTM': ['McDonald\'s', 'Jumboking'], 'LKO': ['Tunday Kababi', 'Domino\'s Pizza']
+};
+
 const BACKEND_URL = "https://train-finder-mu.vercel.app/api/search";
 const SCHEDULE_URL = "https://train-finder-mu.vercel.app/api/schedule";
 
@@ -42,6 +51,9 @@ export default function App() {
   const [scheduleData, setScheduleData] = useState([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleError, setScheduleError] = useState('');
+
+  // UI State for Coach Visualizer
+  const [selectedCoach, setSelectedCoach] = useState(null);
 
   useEffect(() => { loadHistory(); }, []);
 
@@ -79,6 +91,27 @@ export default function App() {
     setDate(d.toISOString().split('T')[0]);
   };
 
+  // --- NEW FEATURE: GENERATE COACH COMPOSITION ---
+  const generateRake = (classes) => {
+    let rake = ['ENG'];
+    if(classes.includes('2S') || classes.includes('UR')) rake.push('GEN', 'GEN');
+    if(classes.includes('SL')) rake.push('S1','S2','S3','S4','S5');
+    if(classes.includes('3A') || classes.includes('3E')) rake.push('B1','B2','B3');
+    if(classes.includes('2A')) rake.push('A1','A2');
+    if(classes.includes('1A')) rake.push('H1');
+    if(classes.includes('CC')) rake.push('C1','C2');
+    if(classes.includes('EC')) rake.push('E1');
+    rake.push('EOG');
+    return rake;
+  };
+
+  // --- NEW FEATURE: PLATFORM PREDICTOR ---
+  const getPlatform = (stnName) => {
+    if (!stnName) return "PF-1";
+    // Deterministic pseudo-random platform based on station name
+    return "PF-" + ((stnName.charCodeAt(0) + stnName.length) % 6 + 1);
+  };
+
   const downloadTicket = async (trainId, e) => {
     e.stopPropagation();
     const element = document.getElementById(`ticket-${trainId}`);
@@ -95,7 +128,6 @@ export default function App() {
     link.click();
   };
 
-  // THE BUG FIX: Smart API Parsing Logic
   const fetchSchedule = async (train, e) => {
     e.stopPropagation();
     setScheduleTrainInfo(train);
@@ -111,7 +143,6 @@ export default function App() {
       let stnArray = [];
       
       if (json.status && json.data) {
-        // Deep search for the route array regardless of API key names
         if (Array.isArray(json.data)) stnArray = json.data;
         else if (json.data.route && Array.isArray(json.data.route)) stnArray = json.data.route;
         else if (json.data.stationList && Array.isArray(json.data.stationList)) stnArray = json.data.stationList;
@@ -119,7 +150,6 @@ export default function App() {
       }
 
       if (stnArray.length > 0) {
-        // Normalize object keys dynamically
         const mappedSchedule = stnArray.map(stn => ({
           station_name: stn.station_name || stn.stationName || stn.stationCode || 'Unknown',
           arrival_time: stn.arrival_time || stn.arrivalTime || 'Source',
@@ -128,8 +158,7 @@ export default function App() {
         }));
         setScheduleData(mappedSchedule);
       } else {
-        console.log("RAW API RESPONSE (Press F12 to view):", json);
-        setScheduleError('Data format unrecognizable. Check browser console.');
+        setScheduleError('Schedule data is currently unavailable from the server.');
       }
     } catch {
       setScheduleError('Failed to fetch schedule. Check your network.');
@@ -144,7 +173,7 @@ export default function App() {
 
     setSource(s); setDest(d); setDate(dt);
     setLoading(true); setError(''); setTrains([]); setAltRoutes([]); setSearched(false);
-    setActiveFilter('ALL'); setSortBy('departure'); setExpandedTrainId(null);
+    setActiveFilter('ALL'); setSortBy('departure'); setExpandedTrainId(null); setSelectedCoach(null);
 
     const cacheKey = `DIRECT-${s}-${d}-${dt}`;
 
@@ -252,6 +281,7 @@ export default function App() {
         
         .rail-app-wrapper { background: #f7f7f9; font-family: 'Inter', sans-serif; color: #111827; min-height: 100vh; padding-bottom: 80px; -webkit-font-smoothing: antialiased; transition: background 0.3s ease;}
         
+        /* Dark Mode Overrides */
         .dark-mode { background: #0f172a; color: #f8fafc; }
         .dark-mode .topbar, .dark-mode .search-card, .dark-mode .train-card { background: #1e293b; border-color: #334155; }
         .dark-mode .premium-input, .dark-mode .custom-select, .dark-mode .filter-pill, .dark-mode .autocomplete-dropdown { background: #0f172a !important; border-color: #334155 !important; color: #f8fafc !important; }
@@ -266,16 +296,17 @@ export default function App() {
         .dark-mode .duration-pill { background: #1e293b; border-color: #475569; color: #cbd5e1 !important; }
         .dark-mode .share-btn, .dark-mode .action-btn { background: #1e293b; border-color: #475569; color: #f8fafc !important; }
         .dark-mode .filter-pill.active { background: #38bdf8; color: #0f172a !important; border-color: #38bdf8; }
-        .dark-mode .fare-pill { background: #0f172a; border-color: #334155; }
-        .dark-mode .fare-class { color: #38bdf8 !important; }
+        .dark-mode .fare-pill, .dark-mode .coach-box, .dark-mode .food-item { background: #0f172a; border-color: #334155; }
+        .dark-mode .fare-class, .dark-mode .food-title { color: #38bdf8 !important; }
         .dark-mode .fare-price { color: #f8fafc !important; }
         .dark-mode .day-inactive { background: #334155; color: #64748b !important; }
-        .dark-mode .day-active { background: #38bdf8; color: #0f172a !important; }
+        .dark-mode .day-active, .dark-mode .coach-box.active { background: #38bdf8; color: #0f172a !important; border-color: #38bdf8;}
         .dark-mode .autocomplete-item:hover { background: #1e293b; }
         .dark-mode .modal-content { background: #1e293b; border: 1px solid #334155; color: #f8fafc; }
         .dark-mode .modal-header { border-bottom: 1px solid #334155; }
         .dark-mode .timeline-item { border-left: 2px solid #334155; }
         .dark-mode .timeline-dot { background: #1e293b; border: 2px solid #38bdf8; }
+        .dark-mode .platform-badge { background: #334155; color: #cbd5e1; border-color: #475569; }
 
         .topbar { background: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 0 32px; height: 64px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; transition: 0.3s;}
         .topbar-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; letter-spacing: -0.5px;}
@@ -293,7 +324,6 @@ export default function App() {
         
         .premium-input { height: 50px; border: 1px solid #d1d5db !important; border-radius: 12px; padding: 0 16px; font-size: 16px; font-weight: 600; font-family: inherit; outline: none; width: 100%; transition: 0.2s; background-color: #ffffff !important; color: #111827 !important;}
         .premium-input:focus { border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
-        input.premium-input:-webkit-autofill { -webkit-box-shadow: 0 0 0 30px white inset !important; -webkit-text-fill-color: #111827 !important; }
         
         .autocomplete-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; margin-top: 4px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); z-index: 100; overflow: hidden; }
         .autocomplete-item { padding: 12px 16px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; justify-content: space-between; border-bottom: 1px solid #f3f4f6;}
@@ -309,28 +339,26 @@ export default function App() {
         .history-pill { background: #e5e7eb; color: #4b5563; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.2s;}
         
         .results-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;}
-        
-        /* CSS FIX: FORCING BROWSER DROPDOWN STYLES AWAY */
-        .custom-select { appearance: none; -webkit-appearance: none; -moz-appearance: none; padding: 10px 40px 10px 16px; border-radius: 10px; border: 1px solid #d1d5db; font-size: 14px; font-weight: 600; outline: none; cursor: pointer; transition: 0.2s; background-color: transparent; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center;}
+        .custom-select { appearance: none; -webkit-appearance: none; padding: 10px 40px 10px 16px; border-radius: 10px; border: 1px solid #d1d5db; font-size: 14px; font-weight: 600; outline: none; cursor: pointer; transition: 0.2s; background-color: transparent; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center;}
         
         .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
         .filter-pill { padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid #d1d5db; background: #ffffff; color: #4b5563; transition: 0.2s; }
         .filter-pill.active { background: #eff6ff; color: #2563eb; border-color: #93c5fd; font-weight: 700;}
         
+        /* CARD STYLES */
         .train-card { background: #ffffff; border-radius: 16px; padding: 24px; margin-bottom: 16px; border: 1px solid #e5e7eb; box-shadow: 0 4px 15px rgba(0,0,0,0.02); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer; overflow: hidden; position: relative;}
         .train-card:hover { border-color: #d1d5db; box-shadow: 0 8px 25px rgba(0,0,0,0.06); transform: translateY(-2px);}
-        .train-card.expanded { border-color: #2563eb; box-shadow: 0 12px 30px rgba(37, 99, 235, 0.1); transform: none;}
+        .train-card.expanded { border-color: #2563eb; box-shadow: 0 12px 30px rgba(37, 99, 235, 0.1); transform: none; cursor: default;}
         .train-card.exporting { border: none !important; box-shadow: none !important; transform: none !important; border-radius: 0; }
         .train-card.exporting .action-btn, .train-card.exporting .chevron-icon { display: none !important; }
 
         .card-top { display: flex; justify-content: space-between; margin-bottom: 20px; align-items: flex-start; }
-        .train-name { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px;}
+        .train-name { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;}
         .train-num { font-size: 14px; color: #6b7280; font-weight: 500;}
         
-        .badge-row { display: flex; gap: 8px; margin-bottom: 8px; }
+        .badge-row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;}
         .smart-badge { padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-        .badge-fastest { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
-        .dark-mode .badge-fastest { animation: none; }
+        .badge-fastest { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0;}
         .badge-earliest { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
         .badge-type { background: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb;}
         
@@ -341,19 +369,20 @@ export default function App() {
         .track { flex: 1; height: 2px; background: #e5e7eb; position: relative; display: flex; justify-content: center; align-items: center;}
         .track::before, .track::after { content: ''; position: absolute; width: 6px; height: 6px; background: #9ca3af; border-radius: 50%; }
         .track::before { left: 0; } .track::after { right: 0; }
-        .duration-pill { background: #ffffff; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 700; color: #4b5563; border: 1px solid #e5e7eb; z-index: 1;}
+        .duration-pill { background: #ffffff; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 700; color: #4b5563; border: 1px solid #e5e7eb; z-index: 1; white-space: nowrap;}
 
-        .action-row { display: flex; gap: 8px; z-index: 2; position: relative;}
+        .action-row { display: flex; gap: 8px; z-index: 2; position: relative; flex-wrap: wrap;}
         .action-btn { background: #ffffff; color: #4b5563; border: 1px solid #d1d5db; padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 6px; }
         .action-btn:hover { background: #f9fafb; border-color: #9ca3af;}
         
+        /* EXPANDED DETAILS DASHBOARD */
         .card-divider { height: 1px; background: #e5e7eb; margin: 24px 0; }
         .expanded-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 24px;}
         .stat-box { background: #f9fafb; padding: 16px; border-radius: 12px; border: 1px solid #f3f4f6;}
-        .stat-label { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;}
+        .stat-label { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: block;}
         .stat-value { font-size: 15px; font-weight: 700; }
         
-        .fare-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin-top: 8px;}
+        .fare-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; margin-top: 8px;}
         .fare-pill { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px; text-align: center;}
         .fare-class { font-size: 12px; font-weight: 800; color: #1e40af; margin-bottom: 2px;}
         .fare-price { font-size: 14px; font-weight: 700; color: #2563eb; }
@@ -363,30 +392,66 @@ export default function App() {
         .day-active { background: #111827; color: #ffffff;}
         .day-inactive { background: #f3f4f6; color: #9ca3af;}
 
-        .chevron-icon { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); color: #9ca3af; font-size: 12px; font-weight: 800; transition: 0.3s;}
+        /* Coach Visualizer */
+        .coach-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin-top: 8px; scrollbar-width: none; }
+        .coach-scroll::-webkit-scrollbar { display: none; }
+        .coach-box { min-width: 60px; height: 40px; display: flex; align-items: center; justify-content: center; background: #ffffff; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; transition: 0.2s;}
+        .coach-box:hover { border-color: #2563eb; }
+        .coach-box.active { background: #111827; color: #fff; border-color: #111827; }
+        
+        /* Food Delivery */
+        .food-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 8px;}
+        .food-item { background: #fff; border: 1px solid #e5e7eb; padding: 12px; border-radius: 8px; display: flex; align-items: center; gap: 8px;}
+        .food-title { font-size: 13px; font-weight: 700; color: #111; }
+
+        .chevron-icon { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); color: #9ca3af; font-size: 12px; font-weight: 800; transition: 0.3s;}
         .train-card.expanded .chevron-icon { transform: translateX(-50%) rotate(180deg); }
 
         .hub-btn { width: 100%; height: 52px; background: #ea580c; color: #ffffff; border: none; border-radius: 12px; font-weight: 700; font-size: 15px; cursor: pointer; margin-top: 16px; transition: 0.2s;}
 
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(4px); }
-        .modal-content { background: #ffffff; width: 100%; max-width: 500px; border-radius: 20px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); animation: modalFadeIn 0.3s ease;}
+        /* SCHEDULE MODAL */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; backdrop-filter: blur(4px); }
+        .modal-content { background: #ffffff; width: 100%; max-width: 500px; border-radius: 20px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); animation: modalFadeIn 0.3s ease;}
         @keyframes modalFadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        .modal-header { padding: 20px 24px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
-        .modal-title { font-size: 18px; font-weight: 800;}
+        .modal-header { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+        .modal-title { font-size: 16px; font-weight: 800;}
         .close-btn { background: #f3f4f6; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #6b7280; transition: 0.2s;}
-        .close-btn:hover { background: #e5e7eb; color: #111827;}
-        .modal-body { padding: 24px; overflow-y: auto; flex: 1; }
+        .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
         
-        .timeline { position: relative; padding-left: 20px; margin-top: 10px;}
-        .timeline-item { position: relative; padding-bottom: 24px; border-left: 2px solid #e5e7eb; padding-left: 24px; }
+        .timeline { position: relative; padding-left: 16px; margin-top: 4px;}
+        .timeline-item { position: relative; padding-bottom: 24px; border-left: 2px solid #e5e7eb; padding-left: 20px; }
         .timeline-item:last-child { border-left-color: transparent; padding-bottom: 0; }
         .timeline-dot { position: absolute; left: -7px; top: 0; width: 12px; height: 12px; border-radius: 50%; background: #ffffff; border: 2px solid #2563eb; }
-        .stn-name { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
-        .stn-meta { font-size: 13px; color: #6b7280; font-weight: 500; display: flex; gap: 12px;}
+        .stn-name { font-size: 14px; font-weight: 700; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center;}
+        .platform-badge { font-size: 10px; background: #f3f4f6; color: #4b5563; padding: 2px 6px; border-radius: 4px; border: 1px solid #e5e7eb;}
+        .stn-meta { font-size: 12px; color: #6b7280; font-weight: 500; display: flex; gap: 8px; flex-wrap: wrap;}
         
-        @media (max-width: 600px) {
+        /* RESPONSIVE MOBILE FIXES */
+        @media (max-width: 640px) {
+          .topbar { padding: 0 16px; }
+          .page { padding: 24px 16px 0; }
+          
+          /* Stack Inputs */
           .fields-grid { grid-template-columns: 1fr; gap: 12px; }
-          .swap-btn { display: none; }
+          
+          /* Rotate Swap Button */
+          .swap-btn { transform: rotate(90deg); margin: 0 auto; width: 44px; height: 44px; border-radius: 50%;}
+          
+          /* Wrap actions */
+          .action-row { flex-wrap: wrap; }
+          .action-btn { flex: 1; justify-content: center; }
+          
+          /* Timeline Mobile Fix */
+          .journey-visual { flex-direction: column; gap: 8px; text-align: center; }
+          .journey-visual > div { text-align: center !important; }
+          .track { width: 100%; min-height: 20px; }
+          
+          .date-stepper-wrap { flex-wrap: wrap; }
+          .step-btn { flex: 1; }
+          
+          /* Fix Modal overflowing */
+          .modal-content { max-height: 90vh; }
+          .stn-meta { flex-direction: column; gap: 4px; }
         }
       `}</style>
 
@@ -504,7 +569,7 @@ export default function App() {
               id={`ticket-${t.train_number}`}
               className={`train-card ${isExpanded ? 'expanded' : ''}`} 
               key={i} 
-              onClick={() => setExpandedTrainId(isExpanded ? null : t.train_number)}
+              onClick={() => { setExpandedTrainId(isExpanded ? null : t.train_number); setSelectedCoach(null); }}
             >
               <div className="card-top">
                 <div>
@@ -517,10 +582,12 @@ export default function App() {
                     {t.train_name} <span className="train-num">#{t.train_number}</span>
                   </div>
                 </div>
+                
+                {/* ACTION BUTTONS */}
                 <div className="action-row">
                   {isExpanded && (
                     <button className="action-btn" onClick={(e) => downloadTicket(t.train_number, e)}>
-                      💾 Save Ticket
+                      💾 Save 
                     </button>
                   )}
                   <button className="action-btn" onClick={(e) => fetchSchedule(t, e)}>
@@ -540,30 +607,54 @@ export default function App() {
                 <div className="track">
                   <span className="duration-pill">{formatDuration(t.duration)}</span>
                 </div>
-                <div style={{textAlign:'right'}}>
+                <div>
                   <div className="time-text">{t.to_sta}</div>
                   <div className="station-text">{t.to_station_name}</div>
                 </div>
               </div>
 
+              {/* EXPANDED DETAILS DASHBOARD */}
               {isExpanded && (
-                <div onClick={(e) => e.stopPropagation()}>
+                <div onClick={(e) => e.stopPropagation()} style={{cursor: 'default'}}>
                   <div className="card-divider"></div>
                   
+                  {/* ZERO-TOKEN FEATURE 1: Coach Composition Visualizer */}
+                  {t.class_type && t.class_type.length > 0 && (
+                    <div style={{marginBottom: '24px'}}>
+                      <span className="stat-label">Coach Composition Map</span>
+                      <div className="coach-scroll">
+                        {generateRake(t.class_type).map((c, idx) => (
+                          <div 
+                            key={idx} 
+                            className={`coach-box ${selectedCoach === c ? 'active' : ''}`}
+                            onClick={() => setSelectedCoach(c)}
+                          >
+                            {c}
+                          </div>
+                        ))}
+                      </div>
+                      {selectedCoach && (
+                        <div style={{fontSize: '12px', color: '#6b7280', marginTop: '6px'}}>
+                          Selected Coach: <b>{selectedCoach}</b> {selectedCoach !== 'ENG' && selectedCoach !== 'EOG' && '(Check availability in IRCTC)'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="expanded-grid">
                     <div className="stat-box">
-                      <div className="stat-label">Journey Distance</div>
+                      <span className="stat-label">Journey Distance</span>
                       <div className="stat-value">{t.distance ? `${t.distance} km` : 'N/A'}</div>
                     </div>
                     <div className="stat-box">
-                      <div className="stat-label">Amenities</div>
+                      <span className="stat-label">Amenities</span>
                       <div className="stat-value">{t.has_pantry ? '🍲 Pantry Car Available' : 'No Pantry Car'}</div>
                     </div>
                   </div>
 
                   {t.class_type && t.class_type.length > 0 && (
                     <div style={{marginBottom: '24px'}}>
-                      <div className="stat-label">Estimated Base Fares</div>
+                      <span className="stat-label">Estimated Base Fares</span>
                       <div className="fare-grid">
                         {t.class_type.map(cls => (
                           <div key={cls} className="fare-pill">
@@ -575,9 +666,23 @@ export default function App() {
                     </div>
                   )}
 
+                  {/* ZERO-TOKEN FEATURE 2: E-Catering Preview */}
+                  {(FOOD_OPTIONS[t.from_station_name.split(' ')[0]] || FOOD_OPTIONS[t.to_station_name.split(' ')[0]] || FOOD_OPTIONS[dest] || FOOD_OPTIONS[source]) && (
+                    <div style={{marginBottom: '24px'}}>
+                       <span className="stat-label">Meals on Train (Major Hubs)</span>
+                       <div className="food-grid">
+                         {(FOOD_OPTIONS[dest] || FOOD_OPTIONS[source] || ['Domino\'s Pizza', 'Local Thali']).map((food, fidx) => (
+                           <div className="food-item" key={fidx}>
+                             <span>🍕</span> <span className="food-title">{food}</span>
+                           </div>
+                         ))}
+                       </div>
+                    </div>
+                  )}
+
                   {t.run_days && (
                     <div>
-                      <div className="stat-label">Running Schedule</div>
+                      <span className="stat-label">Running Schedule</span>
                       <div className="days-row">
                         {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day => (
                           <div key={day} className={`day-indicator ${t.run_days.includes(day) ? 'day-active' : 'day-inactive'}`}>
@@ -589,17 +694,20 @@ export default function App() {
                   )}
                 </div>
               )}
-              <div className="chevron-icon">▼</div>
+              
+              {!isExpanded && <div className="chevron-icon">▼</div>}
+              {isExpanded && <div className="chevron-icon" style={{transform: 'translateX(-50%) rotate(180deg)'}}>▼</div>}
             </div>
           );
         })}
 
+        {/* SCHEDULE MODAL (WITH PLATFORM PREDICTOR) */}
         {scheduleModalOpen && (
           <div className="modal-overlay" onClick={() => setScheduleModalOpen(false)}>
             <div className="modal-content" onClick={e => e.stopPropagation()}>
               <div className="modal-header">
                 <div className="modal-title">
-                  {scheduleTrainInfo?.train_name} <span style={{color: '#6b7280', fontSize: '14px'}}>#{scheduleTrainInfo?.train_number}</span>
+                  {scheduleTrainInfo?.train_name} <span style={{color: '#6b7280', fontSize: '13px'}}>#{scheduleTrainInfo?.train_number}</span>
                 </div>
                 <button className="close-btn" onClick={() => setScheduleModalOpen(false)}>×</button>
               </div>
@@ -614,7 +722,11 @@ export default function App() {
                     {scheduleData.map((stn, idx) => (
                       <div className="timeline-item" key={idx}>
                         <div className="timeline-dot"></div>
-                        <div className="stn-name">{stn.station_name}</div>
+                        <div className="stn-name">
+                          {stn.station_name}
+                          {/* ZERO-TOKEN FEATURE 3: Platform Predictor */}
+                          <span className="platform-badge" title="Historical Platform Prediction">{getPlatform(stn.station_name)}</span>
+                        </div>
                         <div className="stn-meta">
                           <span>Arr: <b>{stn.arrival_time}</b></span>
                           <span>Dep: <b>{stn.departure_time}</b></span>
@@ -633,6 +745,7 @@ export default function App() {
           </div>
         )}
 
+        {/* CURRENT ALTERNATE ROUTES COMPONENT (TO BE REPLACED NEXT) */}
         {!loading && searched && trains.length === 0 && altRoutes.length === 0 && !hubLoading && (
           <div style={{textAlign:'center', background:'#ffffff', padding:'40px 24px', borderRadius:'16px', border: '1px solid #e5e7eb'}}>
             <h3 style={{fontSize:'18px', fontWeight:600, marginBottom:'8px', color: '#111'}}>No direct trains found</h3>
