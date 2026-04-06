@@ -38,6 +38,25 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
+// NEW ROUTE: Fetch Train Schedule
+app.get('/api/schedule', async (req, res) => {
+  const { trainNo } = req.query;
+  if (!trainNo) return res.status(400).json({ error: "Missing trainNo" });
+
+  try {
+    const response = await axios.get('https://irctc1.p.rapidapi.com/api/v1/getTrainSchedule', {
+      params: { trainNo: trainNo },
+      headers: {
+        'x-rapidapi-host': 'irctc1.p.rapidapi.com',
+        'x-rapidapi-key': process.env.RAPIDAPI_KEY 
+      }
+    });
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ status: false, message: "Failed to fetch schedule." });
+  }
+});
+
 app.get('/', (req, res) => res.send('API is Online 🚄'));
 
 module.exports = app;

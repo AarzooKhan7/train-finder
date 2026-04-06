@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import html2canvas from 'html2canvas';
 
-// Hardcoded Station Dictionary - Now includes FBG!
+// Hardcoded Station Dictionary
 const STATIONS = [
   { code: 'NDLS', name: 'New Delhi' }, { code: 'ANVT', name: 'Anand Vihar Terminal' },
   { code: 'CNB', name: 'Kanpur Central' }, { code: 'JBN', name: 'Jogbani' },
@@ -14,6 +14,7 @@ const STATIONS = [
 
 const TRANSIT_HUBS = ['NDLS', 'CNB', 'PNBE', 'DDU', 'ET', 'HWH', 'VGLJ', 'BZA'];
 const BACKEND_URL = "https://train-finder-mu.vercel.app/api/search";
+const SCHEDULE_URL = "https://train-finder-mu.vercel.app/api/schedule";
 
 export default function App() {
   const [darkMode, setDarkMode] = useState(false);
@@ -36,6 +37,13 @@ export default function App() {
 
   const [srcFocus, setSrcFocus] = useState(false);
   const [dstFocus, setDstFocus] = useState(false);
+
+  // --- NEW FEATURE STATES: SCHEDULE MODAL ---
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [scheduleTrainInfo, setScheduleTrainInfo] = useState(null);
+  const [scheduleData, setScheduleData] = useState([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleError, setScheduleError] = useState('');
 
   useEffect(() => { loadHistory(); }, []);
 
@@ -87,6 +95,31 @@ export default function App() {
     link.href = data;
     link.download = `RailFinder_Ticket_${trainId}.png`;
     link.click();
+  };
+
+  // --- NEW FEATURE FUNCTION: FETCH SCHEDULE ---
+  const fetchSchedule = async (train, e) => {
+    e.stopPropagation();
+    setScheduleTrainInfo(train);
+    setScheduleModalOpen(true);
+    setScheduleLoading(true);
+    setScheduleError('');
+    setScheduleData([]);
+
+    try {
+      const res = await fetch(`${SCHEDULE_URL}?trainNo=${train.train_number}`);
+      const json = await res.json();
+      
+      if (json.status && json.data) {
+        // Handle array data if the API returns the route array directly inside data
+        setScheduleData(Array.isArray(json.data) ? json.data : []);
+      } else {
+        setScheduleError('Schedule data is currently unavailable.');
+      }
+    } catch {
+      setScheduleError('Failed to fetch schedule. Check your network.');
+    }
+    setScheduleLoading(false);
   };
 
   const handleSearch = async (overrideSrc, overrideDst, overrideDate) => {
@@ -225,6 +258,10 @@ export default function App() {
         .dark-mode .day-inactive { background: #334155; color: #64748b !important; }
         .dark-mode .day-active { background: #38bdf8; color: #0f172a !important; }
         .dark-mode .autocomplete-item:hover { background: #1e293b; }
+        .dark-mode .modal-content { background: #1e293b; border: 1px solid #334155; color: #f8fafc; }
+        .dark-mode .modal-header { border-bottom: 1px solid #334155; }
+        .dark-mode .timeline-item { border-left: 2px solid #334155; }
+        .dark-mode .timeline-dot { background: #1e293b; border: 2px solid #38bdf8; }
 
         .topbar { background: #ffffff; border-bottom: 1px solid #e5e7eb; padding: 0 32px; height: 64px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; transition: 0.3s;}
         .topbar-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; letter-spacing: -0.5px;}
@@ -240,7 +277,6 @@ export default function App() {
         .input-group { display: flex; flex-direction: column; gap: 8px; position: relative;}
         .input-group label { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
         
-        /* AGGRESSIVE CSS OVERRIDES FOR BROKEN INPUTS */
         .premium-input { height: 50px; border: 1px solid #d1d5db !important; border-radius: 12px; padding: 0 16px; font-size: 16px; font-weight: 600; font-family: inherit; outline: none; width: 100%; transition: 0.2s; background-color: #ffffff !important; color: #111827 !important;}
         .premium-input:focus { border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
         input.premium-input:-webkit-autofill, input.premium-input:-webkit-autofill:hover, input.premium-input:-webkit-autofill:focus, input.premium-input:-webkit-autofill:active { -webkit-box-shadow: 0 0 0 30px white inset !important; -webkit-text-fill-color: #111827 !important; }
@@ -318,6 +354,23 @@ export default function App() {
         .train-card.expanded .chevron-icon { transform: translateX(-50%) rotate(180deg); }
 
         .hub-btn { width: 100%; height: 52px; background: #ea580c; color: #ffffff; border: none; border-radius: 12px; font-weight: 700; font-size: 15px; cursor: pointer; margin-top: 16px; transition: 0.2s;}
+
+        /* MODAL CSS */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(4px); }
+        .modal-content { background: #ffffff; width: 100%; max-width: 500px; border-radius: 20px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); animation: modalFadeIn 0.3s ease;}
+        @keyframes modalFadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .modal-header { padding: 20px 24px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+        .modal-title { font-size: 18px; font-weight: 800;}
+        .close-btn { background: #f3f4f6; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #6b7280; transition: 0.2s;}
+        .close-btn:hover { background: #e5e7eb; color: #111827;}
+        .modal-body { padding: 24px; overflow-y: auto; flex: 1; }
+        
+        .timeline { position: relative; padding-left: 20px; margin-top: 10px;}
+        .timeline-item { position: relative; padding-bottom: 24px; border-left: 2px solid #e5e7eb; padding-left: 24px; }
+        .timeline-item:last-child { border-left-color: transparent; padding-bottom: 0; }
+        .timeline-dot { position: absolute; left: -7px; top: 0; width: 12px; height: 12px; border-radius: 50%; background: #ffffff; border: 2px solid #2563eb; }
+        .stn-name { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+        .stn-meta { font-size: 13px; color: #6b7280; font-weight: 500; display: flex; gap: 12px;}
         
         @media (max-width: 600px) {
           .fields-grid { grid-template-columns: 1fr; gap: 12px; }
@@ -417,8 +470,8 @@ export default function App() {
             
             <div className="filter-bar">
               <button className={`filter-pill ${activeFilter === 'ALL' ? 'active' : ''}`} onClick={() => setActiveFilter('ALL')}>All Trains</button>
-              <button className={`filter-pill ${activeFilter === 'MORNING' ? 'active' : ''}`} onClick={() => setActiveFilter('MORNING')}>🌅 Morning</button>
-              <button className={`filter-pill ${activeFilter === 'NIGHT' ? 'active' : ''}`} onClick={() => setActiveFilter('NIGHT')}>🌙 Night</button>
+              <button className={`filter-pill ${activeFilter === 'MORNING' ? 'active' : ''}`} onClick={() => setActiveFilter('MORNING')}>🌅 Morning (5a-11a)</button>
+              <button className={`filter-pill ${activeFilter === 'NIGHT' ? 'active' : ''}`} onClick={() => setActiveFilter('NIGHT')}>🌙 Night (6p-4a)</button>
               <button className={`filter-pill ${activeFilter === 'PREMIUM' ? 'active' : ''}`} onClick={() => setActiveFilter('PREMIUM')}>⚡ Premium Only</button>
               <button className={`filter-pill ${activeFilter === 'AC' ? 'active' : ''}`} onClick={() => setActiveFilter('AC')}>❄️ AC Classes Only</button>
             </div>
@@ -426,7 +479,7 @@ export default function App() {
         )}
 
         {!loading && searched && processedTrains.length === 0 && trains.length > 0 && (
-           <div style={{textAlign:'center', padding:'40px', color:'#6b7280', fontWeight:600, borderRadius: '16px'}}>No trains match the selected filter.</div>
+           <div style={{textAlign:'center', padding:'40px', color:'#6b7280', fontWeight:600, background: '#ffffff', borderRadius: '16px', border: '1px solid #e5e7eb'}}>No trains match the selected filter.</div>
         )}
 
         {!loading && searched && processedTrains.map((t, i) => {
@@ -458,6 +511,10 @@ export default function App() {
                       💾 Save Ticket
                     </button>
                   )}
+                  {/* NEW: SCHEDULE BUTTON */}
+                  <button className="action-btn" onClick={(e) => fetchSchedule(t, e)}>
+                    📅 Schedule
+                  </button>
                   <button className="action-btn" onClick={(e) => shareToWhatsApp(t, e)}>
                     Share 💬
                   </button>
@@ -521,11 +578,74 @@ export default function App() {
                   )}
                 </div>
               )}
-              
               <div className="chevron-icon">▼</div>
             </div>
           );
         })}
+
+        {/* SCHEDULE MODAL */}
+        {scheduleModalOpen && (
+          <div className="modal-overlay" onClick={() => setScheduleModalOpen(false)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <div className="modal-title">
+                  {scheduleTrainInfo?.train_name} <span style={{color: '#6b7280', fontSize: '14px'}}>#{scheduleTrainInfo?.train_number}</span>
+                </div>
+                <button className="close-btn" onClick={() => setScheduleModalOpen(false)}>×</button>
+              </div>
+              
+              <div className="modal-body">
+                {scheduleLoading && <div style={{textAlign: 'center', padding: '40px 0', color: '#6b7280', fontWeight: 600}}>Loading Route Timeline...</div>}
+                
+                {scheduleError && <div style={{color:'#b91c1c', background:'#fef2f2', padding:'14px', borderRadius:'10px', textAlign:'center', fontWeight: 600}}>{scheduleError}</div>}
+                
+                {!scheduleLoading && !scheduleError && scheduleData.length > 0 && (
+                  <div className="timeline">
+                    {scheduleData.map((stn, idx) => (
+                      <div className="timeline-item" key={idx}>
+                        <div className="timeline-dot"></div>
+                        <div className="stn-name">{stn.station_name}</div>
+                        <div className="stn-meta">
+                          <span>Arr: <b>{stn.arrival_time || 'Source'}</b></span>
+                          <span>Dep: <b>{stn.departure_time || 'Dest'}</b></span>
+                          <span>Dist: {stn.distance} km</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {!scheduleLoading && !scheduleError && scheduleData.length === 0 && (
+                  <div style={{textAlign: 'center', padding: '40px 0', color: '#6b7280'}}>No schedule data found for this train.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!loading && searched && trains.length === 0 && altRoutes.length === 0 && !hubLoading && (
+          <div style={{textAlign:'center', background:'#ffffff', padding:'40px 24px', borderRadius:'16px', border: '1px solid #e5e7eb'}}>
+            <h3 style={{fontSize:'18px', fontWeight:600, marginBottom:'8px', color: '#111'}}>No direct trains found</h3>
+            <p style={{color:'#6b7280', fontSize:'14px', marginBottom:'24px', lineHeight: '1.5'}}>Our system can scan major transit hubs to find a smart connecting route.</p>
+            <button className="hub-btn" onClick={searchConnections}>Scan Connecting Routes</button>
+          </div>
+        )}
+
+        {!hubLoading && altRoutes.map((c, i) => (
+          <div className="train-card" style={{borderLeft: '4px solid #ea580c'}} key={`alt-${i}`}>
+            <h3 style={{color: '#ea580c', fontSize:'13px', fontWeight:700, marginBottom:'16px', textTransform:'uppercase', letterSpacing: '0.5px'}}>VIA {c.hub} (Layover: {c.layover}h)</h3>
+            <div className="journey-visual" style={{marginBottom:'12px', background: '#ffffff', border: '1px solid #f3f4f6'}}>
+              <div><div className="time-text">{c.leg1.from_std}</div></div>
+              <div className="track"><span className="duration-pill">Leg 1 ({c.leg1.train_name})</span></div>
+              <div style={{textAlign:'right'}}><div className="time-text">{c.leg1.to_sta}</div></div>
+            </div>
+            <div className="journey-visual" style={{background: '#ffffff', border: '1px solid #f3f4f6'}}>
+              <div><div className="time-text">{c.leg2.from_std}</div></div>
+              <div className="track"><span className="duration-pill">Leg 2 ({c.leg2.train_name})</span></div>
+              <div style={{textAlign:'right'}}><div className="time-text">{c.leg2.to_sta}</div></div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
