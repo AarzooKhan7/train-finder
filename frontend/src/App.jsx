@@ -1,136 +1,120 @@
 import { useState } from 'react';
 import './App.css';
 
-const BACKEND_URL = "https://train-finder-mu.vercel.app/api/search";
-const TRANSIT_HUBS = ['CNB', 'NDLS', 'PNBE', 'DDU', 'ET'];
-
 function App() {
-  const [source, setSource] = useState('JBN');
-  const [dest, setDest] = useState('BPL');
-  const [date, setDate] = useState('2026-04-10');
-  
-  const [directRoutes, setDirectRoutes] = useState([]);
-  const [altRoutes, setAltRoutes] = useState([]);
+  const [source, setSource] = useState('CNB');
+  const [dest, setDest] = useState('NDLS');
+  const [date, setDate] = useState('2026-04-15');
+  const [trains, setTrains] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [statusText, setStatusText] = useState('');
   const [error, setError] = useState('');
-
-  // 1. FORMAT DATE: Converts 2026-04-10 -> 10-04-2026 for your index.js
-  const formatApiDate = (dateStr) => {
-    const [y, m, d] = dateStr.split('-');
-    return `${d}-${m}-${y}`;
-  };
-
-  // 2. TIMESTAMP HELPER
-  const getTimestamp = (dateStr, timeStr) => new Date(`${dateStr}T${timeStr}:00`).getTime();
 
   const handleSearch = async () => {
     setLoading(true);
     setError('');
-    setDirectRoutes([]);
-    setAltRoutes([]);
-    
-    const src = source.trim().toUpperCase();
-    const dst = dest.trim().toUpperCase();
+    setTrains([]);
 
     try {
-      const apiToday = formatApiDate(date);
-      const nextDayObj = new Date(date);
-      nextDayObj.setDate(nextDayObj.getDate() + 1);
-      const tomorrowStr = nextDayObj.toISOString().split('T')[0];
-      const apiTomorrow = formatApiDate(tomorrowStr);
+      // Using the verified YYYY-MM-DD format
+      const url = `https://train-finder-mu.vercel.app/api/search?source=${source}&dest=${dest}&date=${date}`;
+      const res = await fetch(url);
+      const json = await res.json();
 
-      // 1. Direct Routes
-      setStatusText("Searching direct routes...");
-      const dRes = await fetch(`${BACKEND_URL}?source=${src}&dest=${dst}&date=${apiToday}`);
-      const dData = await dRes.json();
-      if (dData.status && dData.data) setDirectRoutes(dData.data);
-
-      // 2. Alternative Routes
-      let connections = [];
-      for (let hub of TRANSIT_HUBS) {
-        if (hub === src || hub === dst) continue;
-        setStatusText(`Checking Leg 1 via ${hub}...`);
-
-        const l1Res = await fetch(`${BACKEND_URL}?source=${src}&dest=${hub}&date=${apiToday}`);
-        const l1Data = await l1Res.json();
-
-        if (l1Data.status && l1Data.data?.length > 0) {
-          setStatusText(`Found Leg 1! Checking connections via ${hub}...`);
-          const l2Res = await fetch(`${BACKEND_URL}?source=${hub}&dest=${dst}&date=${apiTomorrow}`);
-          const l2Data = await l2Res.json();
-
-          if (l2Data.status && l2Data.data) {
-            l1Data.data.forEach(t1 => {
-              l2Data.data.forEach(t2 => {
-                // FIXED LOGIC: Treat arrival at hub as "Next Day" relative to departure
-                // This ensures JBN -> CNB (Overnight) works correctly.
-                const arrivalAtHub = new Date(`${tomorrowStr}T${t1.to_sta}:00`).getTime();
-                const departureFromHub = new Date(`${tomorrowStr}T${t2.from_std}:00`).getTime();
-                
-                const diffMs = departureFromHub - arrivalAtHub;
-                const diffHours = diffMs / (1000 * 60 * 60);
-
-                // If layover is between 1 and 20 hours, it's a valid connection
-                if (diffHours >= 1 && diffHours <= 20) {
-                  connections.push({
-                    hub,
-                    leg1: t1,
-                    leg2: t2,
-                    layover: Math.round(diffHours)
-                  });
-                }
-              });
-            });
-          }
-        }
+      if (json.status && json.data && json.data.length > 0) {
+        setTrains(json.data);
+      } else {
+        setError("No trains found for this route or date.");
       }
-
-      setAltRoutes(connections.sort((a, b) => a.layover - b.layover));
-
     } catch (err) {
-      setError("Quota limit exceeded or backend error.");
+      setError("Failed to connect to the server.");
     }
     setLoading(false);
   };
 
   return (
-    <div className="App" style={{ backgroundColor: '#000', color: '#fff', minHeight: '100vh', padding: '20px' }}>
-      <h1 style={{textAlign: 'center'}}>🚄 Aarzoo's Final Fix</h1>
-      
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '20px' }}>
-        <input style={{padding:'10px'}} value={source} onChange={e => setSource(e.target.value.toUpperCase())} placeholder="Source" />
-        <input style={{padding:'10px'}} value={dest} onChange={e => setDest(e.target.value.toUpperCase())} placeholder="Dest" />
-        <input style={{padding:'10px'}} type="date" value={date} onChange={e => setDate(e.target.value)} />
-        <button onClick={handleSearch} disabled={loading} style={{padding:'10px 20px', backgroundColor: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer'}}>
-          {loading ? 'Searching...' : 'Find Routes'}
-        </button>
-      </div>
-
-      {loading && <div style={{textAlign: 'center', color: '#fbbf24'}}>{statusText}</div>}
-      {error && <div style={{textAlign: 'center', color: '#ef4444'}}>{error}</div>}
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '20px' }}>
-        <div style={{ border: '2px solid #22c55e', padding: '20px', borderRadius: '10px' }}>
-          <h2 style={{color: '#22c55e'}}>Direct</h2>
-          {directRoutes.map((t, i) => <div key={i} style={{marginBottom:'10px', padding:'10px', border:'1px solid #333'}}>{t.train_name}</div>)}
-          {directRoutes.length === 0 && !loading && <p>No direct trains.</p>}
+    <div className="App" style={styles.app}>
+      <header style={styles.header}>
+        <h1 style={styles.title}>🚄 Railway Dashboard</h1>
+        <div style={styles.searchBar}>
+          <input style={styles.input} value={source} onChange={e => setSource(e.target.value.toUpperCase())} placeholder="Source" />
+          <input style={styles.input} value={dest} onChange={e => setDest(e.target.value.toUpperCase())} placeholder="Dest" />
+          <input style={styles.input} type="date" value={date} onChange={e => setDate(e.target.value)} />
+          <button onClick={handleSearch} disabled={loading} style={styles.button}>
+            {loading ? 'Searching...' : 'Find Trains'}
+          </button>
         </div>
+      </header>
 
-        <div style={{ border: '2px solid #f97316', padding: '20px', borderRadius: '10px' }}>
-          <h2 style={{color: '#f97316'}}>Alternative</h2>
-          {altRoutes.map((c, i) => (
-            <div key={i} style={{marginBottom:'15px', borderLeft:'4px solid #f97316', padding:'10px', backgroundColor:'#111'}}>
-              <strong>VIA {c.hub}</strong>
-              <p>1. {c.leg1.train_name} ➔ 2. {c.leg2.train_name}</p>
-              <small>Layover: {c.layover}h</small>
+      {error && <div style={styles.error}>{error}</div>}
+
+      <main style={styles.resultsGrid}>
+        {trains.map((t, i) => (
+          <div key={i} style={styles.card}>
+            <div style={styles.cardHeader}>
+              <div>
+                <span style={styles.trainType}>{t.train_type}</span>
+                <h2 style={styles.trainName}>{t.train_name}</h2>
+                <span style={styles.trainNo}>#{t.train_number}</span>
+              </div>
+              <div style={styles.duration}>⏱ {t.duration}</div>
             </div>
-          ))}
-          {altRoutes.length === 0 && !loading && <p>No connections found.</p>}
-        </div>
-      </div>
+
+            <div style={styles.journey}>
+              <div style={styles.station}>
+                <div style={styles.time}>{t.from_std}</div>
+                <div style={styles.code}>{t.from_station_name}</div>
+              </div>
+              <div style={styles.arrow}>→</div>
+              <div style={styles.station}>
+                <div style={styles.time}>{t.to_sta}</div>
+                <div style={styles.code}>{t.to_station_name}</div>
+              </div>
+            </div>
+
+            <div style={styles.footer}>
+              <div style={styles.days}>
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
+                  <span key={day} style={{
+                    ...styles.day, 
+                    color: t.run_days.includes(day) ? '#38bdf8' : '#475569',
+                    fontWeight: t.run_days.includes(day) ? 'bold' : 'normal'
+                  }}>{day.charAt(0)}</span>
+                ))}
+              </div>
+              <div style={styles.classes}>
+                {t.class_type?.join(' | ')}
+              </div>
+            </div>
+          </div>
+        ))}
+      </main>
     </div>
   );
 }
+
+const styles = {
+  app: { backgroundColor: '#0f172a', minHeight: '100vh', color: '#f1f5f9', padding: '20px' },
+  header: { maxWidth: '1000px', margin: '0 auto 40px', textAlign: 'center' },
+  title: { fontSize: '2.5rem', marginBottom: '20px', color: '#38bdf8' },
+  searchBar: { display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center', background: '#1e293b', padding: '20px', borderRadius: '15px' },
+  input: { padding: '12px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#fff', flex: 1, minWidth: '150px' },
+  button: { padding: '12px 30px', borderRadius: '8px', border: 'none', backgroundColor: '#0284c7', color: '#fff', cursor: 'pointer', fontWeight: 'bold' },
+  error: { textAlign: 'center', background: '#7f1d1d', padding: '10px', borderRadius: '8px', maxWidth: '600px', margin: '0 auto 20px' },
+  resultsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', maxWidth: '1200px', margin: '0 auto' },
+  card: { background: '#1e293b', padding: '20px', borderRadius: '16px', borderLeft: '6px solid #0284c7' },
+  cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' },
+  trainType: { fontSize: '0.7rem', color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '1px' },
+  trainName: { fontSize: '1.1rem', margin: '5px 0' },
+  trainNo: { fontSize: '0.8rem', color: '#94a3b8' },
+  duration: { fontSize: '0.8rem', color: '#94a3b8' },
+  journey: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 0', borderTop: '1px solid #334155', borderBottom: '1px solid #334155' },
+  time: { fontSize: '1.4rem', fontWeight: 'bold' },
+  code: { fontSize: '0.7rem', color: '#94a3b8' },
+  arrow: { color: '#475569' },
+  footer: { display: 'flex', justifyContent: 'space-between', marginTop: '15px', alignItems: 'center' },
+  days: { display: 'flex', gap: '5px' },
+  day: { fontSize: '0.7rem' },
+  classes: { fontSize: '0.7rem', color: '#38bdf8', fontWeight: 'bold' }
+};
 
 export default App;
