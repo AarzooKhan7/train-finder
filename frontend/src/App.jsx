@@ -34,6 +34,7 @@ export default function App() {
   const setCache = (key, data) => localStorage.setItem(key, JSON.stringify(data));
 
   // --- STAGE 1: DIRECT SEARCH (1 Token) ---
+  // --- STAGE 1: DIRECT SEARCH (1 Token) ---
   const handleSearch = async () => {
     setLoading(true); setError(''); setTrains([]); setAltRoutes([]); setSearched(false);
     
@@ -48,8 +49,8 @@ export default function App() {
 
     try {
       setStatusText(`Looking up ${src} → ${dst}`);
-      const apiDate = formatApiDate(date);
-      const res = await fetch(`${BACKEND_URL}?source=${src}&dest=${dst}&date=${apiDate}`);
+      // FIX: Passing the 'date' directly without flipping it
+      const res = await fetch(`${BACKEND_URL}?source=${src}&dest=${dst}&date=${date}`);
       const json = await res.json();
       
       if (json.status && json.data?.length > 0) {
@@ -75,11 +76,11 @@ export default function App() {
     }
 
     try {
-      const apiToday = formatApiDate(date);
+      // FIX: Using the raw YYYY-MM-DD strings directly
+      const apiToday = date; 
       const nextDayObj = new Date(date);
       nextDayObj.setDate(nextDayObj.getDate() + 1);
-      const tomorrowStr = nextDayObj.toISOString().split('T')[0];
-      const apiTomorrow = formatApiDate(tomorrowStr);
+      const apiTomorrow = nextDayObj.toISOString().split('T')[0];
 
       let connections = [];
 
@@ -97,13 +98,11 @@ export default function App() {
           if (l2Data.status && l2Data.data) {
             l1Data.data.forEach(t1 => {
               l2Data.data.forEach(t2 => {
-                // Safe overnight math using Unix Timestamps
                 const arrivalAtHub = new Date(`${date}T${t1.to_sta}:00`).getTime();
                 let departureFromHub = new Date(`${date}T${t2.from_std}:00`).getTime();
                 
-                // If departure is early morning, it's the next day
                 if (departureFromHub < arrivalAtHub) {
-                  departureFromHub = new Date(`${tomorrowStr}T${t2.from_std}:00`).getTime();
+                  departureFromHub = new Date(`${apiTomorrow}T${t2.from_std}:00`).getTime();
                 }
 
                 const diffHours = (departureFromHub - arrivalAtHub) / (1000 * 60 * 60);
